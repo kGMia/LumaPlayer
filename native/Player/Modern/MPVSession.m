@@ -99,8 +99,7 @@ static NSArray<NSString *> *observedKeys(void) {
         for(NSUInteger i=0;i<[playlist count];i++) {
             NSDictionary *entry=playlist[i];
             if([entry[@"id"] longLongValue]!=entryID)continue;
-            if(remove && [entry[@"current"] boolValue])return;
-            if(!remove)self->_resumeAfterWarm=NO;
+            self->_resumeAfterWarm=NO;
             [self send:@[remove?@"playlist-remove":@"playlist-play-index",@(i).stringValue]];
             self->_observed[@"playlist"]=[self property:@"playlist"];
             [self poll];break;

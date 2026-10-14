@@ -28,9 +28,58 @@ extension PlayerModel {
     func playQueueItem(_ id: Int64) {
         cancelFolderScan(); savePosition(); session?.playPlaylistID(id)
     }
+    func canPlayNextQueueItem(_ id: Int64) -> Bool {
+        guard let targetIdx = queue.firstIndex(where: { $0.id == id }) else { return false }
+        if queue[targetIdx].current { return false }
+        if let currentIdx = queue.firstIndex(where: \.current) {
+            return targetIdx != currentIdx + 1
+        }
+        return targetIdx != 0
+    }
+    func playNextQueueItem(_ id: Int64) {
+        guard canPlayNextQueueItem(id) else { return }
+        var order = queue.map(\.id)
+        guard let sourceIdx = order.firstIndex(of: id) else { return }
+        order.remove(at: sourceIdx)
+        let currentID = queue.first(where: \.current)?.id
+        let insertIdx: Int
+        if let currentID, let curIdx = order.firstIndex(of: currentID) {
+            insertIdx = min(order.count, curIdx + 1)
+        } else {
+            insertIdx = 0
+        }
+        order.insert(id, at: insertIdx)
+        customQueueOrder = order
+        if queueSort != "custom" {
+            queueSort = "custom"
+        } else {
+            synchronizeQueueOrder()
+        }
+    }
     func removeQueueItem(_ id: Int64) {
         cancelFolderScan()
         session?.removePlaylistID(id)
+    }
+    func deleteQueueFile(_ item: QueueItem) {
+        cancelFolderScan()
+        let fileURL = URL(fileURLWithPath: item.filename).standardizedFileURL
+        removeQueueItem(item.id)
+        var updatedRecent = recent
+        updatedRecent.removeAll { URL(fileURLWithPath: $0).standardizedFileURL == fileURL }
+        if recent != updatedRecent {
+            recent = updatedRecent
+            UserDefaults.standard.set(recent, forKey: "recent")
+        }
+        if var saved = UserDefaults.standard.dictionary(forKey: "positions") {
+            saved.removeValue(forKey: item.filename)
+            saved.removeValue(forKey: fileURL.path)
+            UserDefaults.standard.set(saved, forKey: "positions")
+        }
+        do {
+            try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
+        } catch {
+            self.error = "Failed to move \"\(fileURL.lastPathComponent)\" to Trash: \(error.localizedDescription)"
+        }
     }
     func toggleMute() { command(["cycle", "mute"]) }
     func stepFrame(backward: Bool = false) {
@@ -61,9 +110,10 @@ extension PlayerModel {
         recent = []; UserDefaults.standard.removeObject(forKey: "recent")
         UserDefaults.standard.removeObject(forKey: "positions")
     }
-    func showInFinder() {
-        guard !path.isEmpty else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    func showInFinder(path targetPath: String? = nil) {
+        let resolved = targetPath ?? path
+        guard !resolved.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: resolved)])
     }
     func saveScreenshot() {
         guard loaded else { return }
@@ -185,6 +235,7 @@ extension PlayerModel {
 private struct QueueRow: View {
     @ObservedObject var model: PlayerModel
     let item: QueueItem
+    var onRequestDelete: (QueueItem) -> Void
     @State private var metadata = QueueMetadata()
     var body: some View {
         HStack(spacing: 10) {
@@ -216,11 +267,42 @@ private struct QueueRow: View {
                 Button { model.removeQueueItem(item.id) } label: { Image(systemName: "minus.circle") }
                     .buttonStyle(.borderless).accessibilityLabel("Remove \(item.title) from queue")
             }
-        }.padding(.vertical, 4)
-            .task(id: item.filename + String(model.queueDetailed)) {
-                let result = await QueueMetadataCache.shared.read(item.filename, cover: model.queueDetailed)
-                if !Task.isCancelled { metadata = result }
+        }
+        .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                model.playQueueItem(item.id)
+            } label: {
+                Label("Play", systemImage: "play.fill")
             }
+            Button {
+                model.playNextQueueItem(item.id)
+            } label: {
+                Label("Play Next", systemImage: "text.insert")
+            }
+            .disabled(!model.canPlayNextQueueItem(item.id))
+            Divider()
+            Button {
+                model.showInFinder(path: item.filename)
+            } label: {
+                Label("Show in Finder", systemImage: "folder")
+            }
+            Divider()
+            Button {
+                model.removeQueueItem(item.id)
+            } label: {
+                Label("Remove from Queue", systemImage: "minus.circle")
+            }
+            Button(role: .destructive) {
+                onRequestDelete(item)
+            } label: {
+                Label("Delete File…", systemImage: "trash")
+            }
+        }
+        .task(id: item.filename + String(model.queueDetailed)) {
+            let result = await QueueMetadataCache.shared.read(item.filename, cover: model.queueDetailed)
+            if !Task.isCancelled { metadata = result }
+        }
     }
     private var durationText: String {
         guard let value = item.current && model.duration > 0 ? model.duration : metadata.duration,
@@ -229,17 +311,46 @@ private struct QueueRow: View {
         return seconds >= 3600 ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60) : String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
+
 struct QueueView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: PlayerModel
+    @State private var pendingDeleteItem: QueueItem?
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("Play Queue").font(.headline)
                 Spacer()
-                NativePlayerMenu(model: model, symbol: "line.3.horizontal.decrease", help: "Queue sorting and appearance", entries: { model.queueMenuEntries() })
-                    .frame(width: 28, height: 24)
-                Button { model.queuePopover = false; openWindow(id: "player"); model.openPanel(append: true) } label: { Image(systemName: "plus") }.help("Add Files…")
+                Menu {
+                    Picker("Sort", selection: $model.queueSort) {
+                        Label("Custom / Added Order", systemImage: "line.3.horizontal").tag("custom")
+                        Label("Filename", systemImage: "textformat.abc").tag("name")
+                        Label("Date Created · Oldest First", systemImage: "calendar").tag("created")
+                    }
+                    Picker("Display", selection: $model.queueDetailed) {
+                        Label("Title & Duration", systemImage: "list.bullet").tag(false)
+                        Label("Cover, Title, Duration & Size", systemImage: "photo.on.rectangle").tag(true)
+                    }
+                    Divider()
+                    Toggle(isOn: $model.autoQueueFolder) {
+                        Label("Add Media from the Same Folder", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        model.enqueueFolder(around: URL(fileURLWithPath: model.path))
+                    } label: {
+                        Label("Scan Current Folder", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(!model.autoQueueFolder || model.path.isEmpty)
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 28, height: 24)
+                .help("Queue sorting and appearance")
+                Button { model.queuePopover = false; openWindow(id: "player"); model.openPanel(append: true) } label: { Image(systemName: "plus") }
+                    .buttonStyle(.borderless)
+                    .help("Add Files…")
             }.padding()
             if !model.folderQueueStatus.isEmpty { Text(model.folderQueueStatus).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.bottom, 6) }
             if model.queue.isEmpty {
@@ -248,10 +359,30 @@ struct QueueView: View {
             } else {
                 List {
                     ForEach(model.queue) { item in
-                        QueueRow(model: model, item: item).moveDisabled(model.queueSort != "custom")
+                        QueueRow(model: model, item: item) { target in
+                            pendingDeleteItem = target
+                        }
+                        .moveDisabled(model.queueSort != "custom")
                     }.onMove { model.moveQueueItems(from: $0, to: $1) }
                 }.listStyle(.sidebar).scrollContentBackground(.hidden)
             }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .confirmationDialog(
+            "Delete \"\(pendingDeleteItem?.title ?? "File")\"?",
+            isPresented: Binding(get: { pendingDeleteItem != nil }, set: { if !$0 { pendingDeleteItem = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDeleteItem
+        ) { item in
+            Button("Move to Trash", role: .destructive) {
+                pendingDeleteItem = nil
+                model.deleteQueueFile(item)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteItem = nil
+            }
+        } message: { item in
+            Text("The file \"\(URL(fileURLWithPath: item.filename).lastPathComponent)\" will be removed from the play queue and moved to the Trash.")
+        }
     }
 }

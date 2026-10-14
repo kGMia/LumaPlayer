@@ -102,10 +102,188 @@ private struct TimelinePreviewBubble: View {
                 .foregroundStyle(.white)
         }
         .padding(6)
-        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
         .allowsHitTesting(false)
+    }
+}
+
+private struct PlaybackSpeedMenu: View {
+    @ObservedObject var model: PlayerModel
+    var body: some View {
+        Menu {
+            ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
+                Button {
+                    model.setSpeed(value)
+                } label: {
+                    if abs(model.speed - value) < 0.01 {
+                        Label("\(value.formatted())×", systemImage: "checkmark")
+                    } else {
+                        Text("\(value.formatted())×")
+                    }
+                }
+            }
+        } label: {
+            Text("\(model.speed.formatted())×")
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Playback speed")
+    }
+}
+
+private struct PlaybackOptionsMenu: View {
+    @Environment(\.openSettings) private var openSettings
+    @ObservedObject var model: PlayerModel
+    var body: some View {
+        Menu {
+            Button {
+                model.toggleMiniPlayer()
+            } label: {
+                Label(model.miniPlayer ? "Restore Player" : "Mini Player", systemImage: "pip")
+            }
+            Button {
+                model.showSidebar("queue")
+            } label: {
+                Label("Play Queue", systemImage: "list.bullet")
+            }
+            Toggle(isOn: $model.showTimelinePreview) {
+                Label("Timeline Hover Preview", systemImage: "photo.on.rectangle.angled")
+            }
+            Button {
+                model.previousFile()
+            } label: {
+                Label("Previous Video", systemImage: "backward.end")
+            }
+            .disabled(!model.canPrevious)
+            Button {
+                model.nextFile()
+            } label: {
+                Label("Next Video", systemImage: "forward.end")
+            }
+            .disabled(!model.canNext)
+
+            Menu {
+                if model.chapters.isEmpty {
+                    Text("No chapters available")
+                } else {
+                    ForEach(model.chapters) { chapter in
+                        Button(chapter.title) { model.seek(chapter.time) }
+                    }
+                }
+            } label: {
+                Label("Chapters", systemImage: "bookmark")
+            }
+
+            Menu {
+                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
+                    Button {
+                        model.setSpeed(value)
+                    } label: {
+                        if abs(model.speed - value) < 0.01 {
+                            Label("\(value.formatted())×", systemImage: "checkmark")
+                        } else {
+                            Text("\(value.formatted())×")
+                        }
+                    }
+                }
+            } label: {
+                Label("Speed", systemImage: "speedometer")
+            }
+
+            Picker(selection: $model.repeatMode) {
+                Text("Off").tag("off")
+                Text("Current Video").tag("file")
+                Text("Play Queue").tag("queue")
+            } label: {
+                Label("Repeat", systemImage: "repeat")
+            }
+
+            Divider()
+
+            Picker(selection: $model.decoder) {
+                Label("Software", systemImage: "cpu").tag("no")
+                Label("Auto · Hardware Enabled", systemImage: "bolt.circle").tag("auto")
+                Label("Hardware · Copy", systemImage: "square.on.square").tag("videotoolbox-copy")
+            } label: {
+                Label("Decoder", systemImage: "cpu")
+            }
+
+            Picker(selection: $model.rotation) {
+                Text("0°").tag(0)
+                Text("90°").tag(90)
+                Text("180°").tag(180)
+                Text("270°").tag(270)
+            } label: {
+                Label("Rotation", systemImage: "rotate.right")
+            }
+
+            Menu {
+                Button("Neutral") { model.applyLook("neutral") }
+                Button("Vivid") { model.applyLook("vivid") }
+                Button("Soft") { model.applyLook("soft") }
+                Button("Monochrome") { model.applyLook("mono") }
+            } label: {
+                Label("Video Looks", systemImage: "camera.filters")
+            }
+
+            Menu {
+                Picker("Output Color Profile", selection: $model.colorProfile) {
+                    Text("Automatic · Source Metadata").tag("auto")
+                    Text("Current Display ICC").tag("display")
+                    Text("sRGB ICC").tag("srgb")
+                    Text("Display P3 ICC").tag("p3")
+                    if UserDefaults.standard.data(forKey: "customICCData") != nil {
+                        Text("Custom ICC").tag("custom")
+                    }
+                }
+                .labelsHidden()
+                Divider()
+                Button {
+                    model.chooseColorProfile()
+                } label: {
+                    Label("Load RGB ICC Profile…", systemImage: "doc.badge.plus")
+                }
+            } label: {
+                Label("Output Color Profile", systemImage: "paintpalette")
+            }
+
+            Divider()
+
+            Button {
+                model.stepFrame()
+            } label: {
+                Label("Step Forward One Frame", systemImage: "forward.frame")
+            }
+            .disabled(!model.loaded)
+
+            Button {
+                model.saveScreenshot()
+            } label: {
+                Label("Save Screenshot…", systemImage: "camera")
+            }
+            .disabled(!model.loaded)
+
+            Button {
+                openSettings()
+            } label: {
+                Label("Settings…", systemImage: "gearshape")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Playback options")
     }
 }
 
@@ -127,10 +305,8 @@ struct FloatingTransport: View {
                     .accessibilityLabel(model.paused ? "Play" : "Pause").help("Play / Pause (Space)")
                 Button { model.skip(1) } label: { Image(systemName: "goforward") }
                     .accessibilityLabel("Forward \(Int(model.seekSeconds)) seconds").help("Forward \(Int(model.seekSeconds)) seconds (→)")
-                NativePlayerMenu(model: model, title: "\(model.speed.formatted())×", help: "Playback speed", entries: { model.speedMenuEntries() })
-                    .frame(width: 55, height: 26)
-                NativePlayerMenu(model: model, symbol: "ellipsis.circle", help: "Playback options", entries: { model.playbackMenuEntries(openSettings: { openSettings() }) })
-                    .frame(width: 28, height: 26)
+                PlaybackSpeedMenu(model: model)
+                PlaybackOptionsMenu(model: model)
                 Spacer(minLength: 0)
                 Button { model.toggleMute() } label: {
                     Image(systemName: model.muted || model.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2").font(.callout)
@@ -339,192 +515,12 @@ struct PlayerWindowReader: NSViewRepresentable {
             DispatchQueue.main.async { [weak self, weak window] in
                 guard let model = self?.model, let window else { return }
                 model.window = window
-                model.fullScreen = window.styleMask.contains(.fullScreen)
+                let isFS = window.styleMask.contains(.fullScreen)
+                model.fullScreen = isFS
+                window.toolbar?.isVisible = !isFS
             }
         }
     }
     func makeNSView(context: Context) -> Probe { let probe = Probe(); probe.model = model; return probe }
     func updateNSView(_ nsView: Probe, context: Context) {}
-}
-
-/// A frozen native menu tree avoids replacing open submenus on every playback snapshot.
-struct PlayerMenuEntry {
-    var title: String
-    var symbol: String = ""
-    var selected = false
-    var enabled = true
-    var children: [PlayerMenuEntry]? = nil
-    var action: (() -> Void)? = nil
-    static var separator: Self { Self(title: "-") }
-}
-struct NativePlayerMenu: NSViewRepresentable {
-    var model: PlayerModel
-    var title = ""
-    var symbol = ""
-    var help: String
-    var entries: () -> [PlayerMenuEntry]
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: true)
-        button.isBordered = false
-        button.appearance = NSAppearance(named: .darkAqua)
-        button.contentTintColor = .white
-        button.focusRingType = .none
-        if let cell = button.cell as? NSPopUpButtonCell {
-            cell.highlightsBy = []
-            cell.showsStateBy = []
-            cell.arrowPosition = .noArrow
-        }
-        button.font = .systemFont(ofSize: 13, weight: .medium)
-        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
-        button.setAccessibilityLabel(help)
-        button.toolTip = help
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.delegate = context.coordinator
-        button.menu = menu
-        context.coordinator.install(menu)
-        return button
-    }
-    func updateNSView(_ view: NSPopUpButton, context: Context) {
-        // Update the next-open builder only, never mutate a menu or control being tracked.
-        context.coordinator.parent = self
-        guard !context.coordinator.tracking else { return }
-        if let first = view.menu?.items.first {
-            context.coordinator.configureLabelItem(first)
-        }
-    }
-    static func dismantleNSView(_ view: NSPopUpButton, coordinator: Coordinator) {
-        view.menu?.cancelTracking()
-    }
-    @MainActor final class Coordinator: NSObject, NSMenuDelegate {
-        var parent: NativePlayerMenu
-        var tracking = false
-        private var actions: [() -> Void] = []
-        init(_ parent: NativePlayerMenu) { self.parent = parent }
-        func configureLabelItem(_ label: NSMenuItem) {
-            if parent.title.isEmpty {
-                label.title = ""
-            } else {
-                label.attributedTitle = NSAttributedString(
-                    string: parent.title,
-                    attributes: [
-                        .foregroundColor: NSColor.white,
-                        .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
-                    ]
-                )
-            }
-            if !parent.symbol.isEmpty {
-                let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-                    .applying(.init(paletteColors: [.white]))
-                let img = NSImage(systemSymbolName: parent.symbol, accessibilityDescription: parent.help)?
-                    .withSymbolConfiguration(config)
-                img?.isTemplate = false
-                label.image = img
-            }
-        }
-        func install(_ menu: NSMenu) {
-            guard !tracking else { return }
-            menu.removeAllItems(); actions.removeAll()
-            let label = NSMenuItem(title: parent.title, action: nil, keyEquivalent: "")
-            configureLabelItem(label)
-            menu.addItem(label) // Pull-down button label, not a selectable menu entry.
-            append(parent.entries(), to: menu)
-        }
-        private func append(_ entries: [PlayerMenuEntry], to menu: NSMenu) {
-            for entry in entries {
-                if entry.title == "-" { menu.addItem(.separator()); continue }
-                let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
-                item.isEnabled = entry.enabled
-                item.state = entry.selected ? .on : .off
-                if !entry.symbol.isEmpty {
-                    item.image = NSImage(systemSymbolName: entry.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
-                    item.image?.isTemplate = true
-                }
-                if let children = entry.children {
-                    let sub = NSMenu(title: entry.title); sub.autoenablesItems = false
-                    append(children, to: sub); item.submenu = sub
-                } else if let action = entry.action {
-                    item.target = self; item.action = #selector(choose(_:))
-                    item.tag = actions.count; actions.append(action)
-                }
-                menu.addItem(item)
-            }
-        }
-        func menuNeedsUpdate(_ menu: NSMenu) { install(menu) }
-        func menuWillOpen(_ menu: NSMenu) { tracking = true; parent.model.menuTracking = true }
-        func menuDidClose(_ menu: NSMenu) {
-            tracking = false
-            let model = parent.model
-            DispatchQueue.main.async { model.menuTracking = false }
-        }
-        @objc private func choose(_ sender: NSMenuItem) {
-            guard actions.indices.contains(sender.tag) else { return }
-            let action = actions[sender.tag]
-            DispatchQueue.main.async { action() }
-        }
-    }
-}
-
-extension PlayerModel {
-    func decoderMenuEntries() -> [PlayerMenuEntry] {
-        [("Software", "cpu", "no"), ("Auto · Hardware Enabled", "bolt.circle", "auto"), ("Hardware · Copy", "square.on.square", "videotoolbox-copy")].map { title, icon, value in
-            PlayerMenuEntry(title: title, symbol: icon, selected: decoder == value, action: { self.decoder = value })
-        }
-    }
-    func speedMenuEntries() -> [PlayerMenuEntry] {
-        [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { value in
-            PlayerMenuEntry(title: "\(value.formatted())×", symbol: "speedometer", selected: speed == value, action: { self.setSpeed(value) })
-        }
-    }
-    func playbackMenuEntries(openSettings: @escaping () -> Void) -> [PlayerMenuEntry] {
-        var chapterItems = chapters.map { chapter in PlayerMenuEntry(title: chapter.title, symbol: "bookmark", action: { self.seek(chapter.time) }) }
-        if chapterItems.isEmpty { chapterItems = [PlayerMenuEntry(title: "No chapters available", enabled: false)] }
-        let rotationItems = [0, 90, 180, 270].map { degrees in
-            PlayerMenuEntry(title: "\(degrees)°", symbol: "rotate.right", selected: rotation == degrees, action: { self.rotation = degrees })
-        }
-        var profiles = [("Automatic · Source Metadata", "auto"), ("Current Display ICC", "display"), ("sRGB ICC", "srgb"), ("Display P3 ICC", "p3")].map { title, value in
-            PlayerMenuEntry(title: title, symbol: "paintpalette", selected: colorProfile == value, action: { self.colorProfile = value })
-        }
-        if UserDefaults.standard.data(forKey: "customICCData") != nil {
-            profiles.append(PlayerMenuEntry(title: "Custom ICC", symbol: "doc", selected: colorProfile == "custom", action: { self.colorProfile = "custom" }))
-        }
-        profiles.append(PlayerMenuEntry(title: "Load RGB ICC Profile…", symbol: "doc.badge.plus", action: { self.chooseColorProfile() }))
-        return [
-            PlayerMenuEntry(title: miniPlayer ? "Restore Player" : "Mini Player", symbol: "pip", action: { self.toggleMiniPlayer() }),
-            PlayerMenuEntry(title: "Play Queue", symbol: "list.bullet", action: { self.showSidebar("queue") }),
-            PlayerMenuEntry(title: "Timeline Hover Preview", symbol: "photo.on.rectangle.angled", selected: showTimelinePreview, action: { self.showTimelinePreview.toggle() }),
-            PlayerMenuEntry(title: "Previous Video", symbol: "backward.end", enabled: canPrevious, action: { self.previousFile() }),
-            PlayerMenuEntry(title: "Next Video", symbol: "forward.end", enabled: canNext, action: { self.nextFile() }),
-            PlayerMenuEntry(title: "Chapters", symbol: "bookmark", children: chapterItems),
-            PlayerMenuEntry(title: "Speed", symbol: "speedometer", children: speedMenuEntries()),
-            PlayerMenuEntry(title: "Repeat", symbol: "repeat", children: [("Off", "off"), ("Current Video", "file"), ("Play Queue", "queue")].map { title, value in
-                PlayerMenuEntry(title: title, selected: repeatMode == value, action: { self.repeatMode = value })
-            }),
-            .separator,
-            PlayerMenuEntry(title: "Decoder", symbol: "cpu", children: decoderMenuEntries()),
-            PlayerMenuEntry(title: "Rotation", symbol: "rotate.right", children: rotationItems),
-            PlayerMenuEntry(title: "Video Looks", symbol: "camera.filters", children: [("Neutral", "neutral"), ("Vivid", "vivid"), ("Soft", "soft"), ("Monochrome", "mono")].map { title, value in
-                PlayerMenuEntry(title: title, symbol: "camera.filters", action: { self.applyLook(value) })
-            }),
-            PlayerMenuEntry(title: "Output Color Profile", symbol: "paintpalette", children: profiles),
-            .separator,
-            PlayerMenuEntry(title: "Step Forward One Frame", symbol: "forward.frame", enabled: loaded, action: { self.stepFrame() }),
-            PlayerMenuEntry(title: "Save Screenshot…", symbol: "camera", enabled: loaded, action: { self.saveScreenshot() }),
-            PlayerMenuEntry(title: "Settings…", symbol: "gearshape", action: openSettings)
-        ]
-    }
-    func queueMenuEntries() -> [PlayerMenuEntry] {
-        [
-            PlayerMenuEntry(title: "Sort", symbol: "arrow.up.arrow.down", children: [("Custom / Added Order", "custom", "line.3.horizontal"), ("Filename", "name", "textformat.abc"), ("Date Created · Oldest First", "created", "calendar")].map { title, value, icon in
-                PlayerMenuEntry(title: title, symbol: icon, selected: queueSort == value, action: { self.queueSort = value })
-            }),
-            PlayerMenuEntry(title: "Display", symbol: "list.bullet.rectangle", children: [
-                PlayerMenuEntry(title: "Title & Duration", symbol: "list.bullet", selected: !queueDetailed, action: { self.queueDetailed = false }),
-                PlayerMenuEntry(title: "Cover, Title, Duration & Size", symbol: "photo.on.rectangle", selected: queueDetailed, action: { self.queueDetailed = true })
-            ]), .separator,
-            PlayerMenuEntry(title: "Add Media from the Same Folder", symbol: "folder.badge.plus", selected: autoQueueFolder, action: { self.autoQueueFolder.toggle() }),
-            PlayerMenuEntry(title: "Scan Current Folder", symbol: "arrow.clockwise", enabled: autoQueueFolder && !path.isEmpty, action: { self.enqueueFolder(around: URL(fileURLWithPath: self.path)) })
-        ]
-    }
 }

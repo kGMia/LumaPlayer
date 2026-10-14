@@ -26,10 +26,10 @@ import Combine
         guard let main = model.window, model.videoView != nil, model.mainVideoHost != nil else { return }
         owner = model
         let screen = main.screen?.visibleFrame ?? main.frame
-        let width = min(440.0, screen.width)
+        let width = min(320.0, screen.width)
         let w = (model.source["dw"] as? NSNumber)?.doubleValue ?? 16
         let h = (model.source["dh"] as? NSNumber)?.doubleValue ?? 9
-        let height = min(screen.height, max(260, width * h / max(1, w)))
+        let height = min(screen.height, max(160, (width * h / max(1, w)).rounded()))
         let frame = NSRect(x: screen.maxX - width - 20, y: screen.minY + 20, width: width, height: height)
         let floating = NSPanel(contentRect: frame, styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         floating.title = "Mini Player"
@@ -41,7 +41,7 @@ import Combine
         floating.hidesOnDeactivate = false
         floating.isReleasedWhenClosed = false
         floating.isMovableByWindowBackground = true
-        floating.minSize = NSSize(width: 320, height: 260)
+        floating.minSize = NSSize(width: 240, height: 135)
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             floating.standardWindowButton(button)?.isHidden = true
         }
@@ -155,6 +155,9 @@ import Combine
         let ticket = generation
         fullScreenTransition = true
         model.windowTransition = true
+        if model.window?.styleMask.contains(.fullScreen) == false {
+            model.window?.toolbar?.isVisible = false
+        }
         model.videoView?.prepare(forWindowTransition: {})
         // Recover if AppKit rejects/cancels a fullscreen request and sends no did notification.
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self, weak model] in
@@ -165,7 +168,9 @@ import Combine
     func finishFullScreen(_ model: PlayerModel) {
         guard fullScreenTransition else { return }
         fullScreenTransition = false
-        model.fullScreen = model.window?.styleMask.contains(.fullScreen) == true
+        let isFS = model.window?.styleMask.contains(.fullScreen) == true
+        model.fullScreen = isFS
+        model.window?.toolbar?.isVisible = !isFS
         model.videoView?.finishWindowTransition()
         model.enhancementPlanResumeAt = ProcessInfo.processInfo.systemUptime + 0.5
         model.windowTransition = false
@@ -219,14 +224,24 @@ private struct MiniPlayerContent: View {
         ZStack {
             Color.black
             MiniVideoSurface(host: host)
-                .onTapGesture(count: 2) { model.windowModes.restore(model) }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activity.handleCanvasTap(
+                        onSingleTap: { toggleControls() },
+                        onDoubleTap: { model.windowModes.restore(model) }
+                    )
+                }
             MiniTransport(model: model, scrubbing: $scrubbing) { hovering in
                 if hoveringControls != hovering { hoveringControls = hovering }
                 reveal()
             }.opacity(controlsVisible ? 1 : 0)
                 .allowsHitTesting(controlsVisible).accessibilityHidden(!controlsVisible)
         }.ignoresSafeArea().environment(\.colorScheme, .dark)
-            .onContinuousHover { phase in if case .active = phase { reveal() } }
+            .onContinuousHover { phase in
+                if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
+                    reveal()
+                }
+            }
             .onChange(of: model.paused) { reveal() }
             .onChange(of: model.path) { reveal() }
             .onChange(of: model.autoHideControls) { reveal() }
@@ -244,6 +259,12 @@ private struct MiniPlayerContent: View {
         activity.last = Date()
         if !controlsVisible {
             withAnimation(reduceMotion ? nil : .easeIn(duration: 0.15)) { controlsVisible = true }
+        }
+    }
+    private func toggleControls() {
+        activity.recordManualToggle(hiding: controlsVisible)
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            controlsVisible.toggle()
         }
     }
 }
@@ -269,8 +290,8 @@ extension PlayerModel {
 struct MiniGlassButton: View {
     let symbol: String
     let title: String
-    var diameter: CGFloat = 40
-    var symbolSize: CGFloat = 16
+    var diameter: CGFloat = 30
+    var symbolSize: CGFloat = 13
     var action: () -> Void
     var body: some View {
         Button(action: action) {
@@ -297,55 +318,106 @@ struct MiniTransport: View {
                         .disabled(model.windowTransition)
                 }.onHover(perform: onControlHover)
                 Spacer()
-                VStack(spacing: 5) {
-                    Text(model.title).font(.caption).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 10) {
+                VStack(spacing: 4) {
+                    Text(model.title).font(.caption2).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
                         PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing, compact: true)
                         MiniGlassButton(symbol: model.muted ? "speaker.slash" : "speaker.wave.2",
-                                        title: model.muted ? "Unmute" : "Mute") { model.toggleMute() }
+                                        title: model.muted ? "Unmute" : "Mute", diameter: 28, symbolSize: 12) { model.toggleMute() }
                     }
-                }.padding(10).background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 18))
+                }.padding(8).background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
                     .onHover(perform: onControlHover)
             }
             // Separate circles, deliberately no shared glass capsule or merging container.
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 MiniGlassButton(symbol: "backward.fill", title: "Back \(Int(model.seekSeconds)) seconds",
-                                diameter: 48, symbolSize: 18) { model.skip(-1) }
+                                diameter: 36, symbolSize: 14) { model.skip(-1) }
                 MiniGlassButton(symbol: model.paused ? "play.fill" : "pause.fill", title: model.paused ? "Play" : "Pause",
-                                diameter: 64, symbolSize: 26) { model.togglePause() }
+                                diameter: 48, symbolSize: 20) { model.togglePause() }
                 MiniGlassButton(symbol: "forward.fill", title: "Forward \(Int(model.seekSeconds)) seconds",
-                                diameter: 48, symbolSize: 18) { model.skip(1) }
+                                diameter: 36, symbolSize: 14) { model.skip(1) }
             }.onHover(perform: onControlHover)
-        }.padding(12)
+        }.padding(10)
     }
 }
 
-/// One system segmented selector, not independently styled buttons.
+/// Native macOS 27 Liquid Glass tab switcher with matched-geometry morphing capsule.
 struct SidebarTabs: View {
     @ObservedObject var model: PlayerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var glassNamespace
+    private let tabs: [(id: String, title: String, symbol: String)] = [
+        ("queue", "Queue", "list.bullet"),
+        ("enhance", "Enhancement", "slider.horizontal.3"),
+        ("info", "Information", "info.circle")
+    ]
     var body: some View {
-        Picker("Panel", selection: $model.sidebarTab) {
-            Label("Queue", systemImage: "list.bullet").tag("queue")
-            Label("Enhancement", systemImage: "slider.horizontal.3").tag("enhance")
-            Label("Information", systemImage: "info.circle").tag("info")
-        }.pickerStyle(.segmented).labelsHidden().labelStyle(.iconOnly)
-            .controlSize(.large)
-            .glassEffect(.regular, in: Capsule())
-            .padding(.horizontal, 12).padding(.vertical, 10)
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 4) {
+                ForEach(tabs, id: \.id) { tab in
+                    let selected = model.sidebarTab == tab.id
+                    Button {
+                        withAnimation(reduceMotion ? nil : .spring(duration: 0.34, bounce: 0.18)) {
+                            model.sidebarTab = tab.id
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: tab.symbol)
+                                .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                            Text(tab.title)
+                                .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(selected ? .primary : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 8)
+                        .contentShape(Capsule())
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(.white.opacity(0.14))
+                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                    .glassEffectID("sidebar-active-tab", in: glassNamespace)
+                                    .glassEffectTransition(.matchedGeometry)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
+                    .accessibilityLabel(tab.title)
+                    .help(tab.title)
+                }
+            }
+            .padding(4)
+            .glassEffect(.clear, in: Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
+
 struct PlayerSidebar: View {
     @ObservedObject var model: PlayerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         VStack(spacing: 0) {
             SidebarTabs(model: model)
-            switch model.sidebarTab {
-            case "enhance": EnhancementInspector(model: model)
-            case "info":
-                Form { Section("Video Information") { VideoInformationRows(model: model) } }
-                    .formStyle(.grouped).scrollContentBackground(.hidden)
-            default: QueueView(model: model)
+            ZStack {
+                switch model.sidebarTab {
+                case "enhance":
+                    EnhancementInspector(model: model)
+                        .transition(.opacity)
+                case "info":
+                    Form { Section("Video Information") { VideoInformationRows(model: model) } }
+                        .formStyle(.grouped).scrollContentBackground(.hidden)
+                        .transition(.opacity)
+                default:
+                    QueueView(model: model)
+                        .transition(.opacity)
+                }
             }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: model.sidebarTab)
         }.background(.ultraThinMaterial)
     }
 }

@@ -2,10 +2,58 @@
 import SwiftUI
 import Combine
 
-/// Reference box for last-activity timestamp so high-frequency mouse movement
-/// in `.onContinuousHover` never invalidates SwiftUI view state when controls are already visible.
-final class ActivityTracker {
+/// Reference box for last-activity timestamp, manual hide suppression, and single/double tap discrimination
+/// so high-frequency mouse movement in `.onContinuousHover` never invalidates SwiftUI view state when controls are already visible.
+@MainActor final class ActivityTracker {
     var last = Date()
+    private var manuallyHiddenAt = Date.distantPast
+    private var hiddenLocation: CGPoint?
+    private var lastHoverLocation: CGPoint = .zero
+    private var tapTask: Task<Void, Never>?
+
+    func shouldRevealOnHover(at location: CGPoint, controlsVisible: Bool) -> Bool {
+        lastHoverLocation = location
+        if controlsVisible {
+            last = Date()
+            return false
+        }
+        let now = Date()
+        if now.timeIntervalSince(manuallyHiddenAt) < 0.4 {
+            return false
+        }
+        if let hiddenLocation {
+            let distance = hypot(location.x - hiddenLocation.x, location.y - hiddenLocation.y)
+            if distance < 14 { return false }
+        }
+        self.hiddenLocation = nil
+        return true
+    }
+
+    func recordManualToggle(hiding: Bool) {
+        if hiding {
+            manuallyHiddenAt = Date()
+            hiddenLocation = lastHoverLocation
+        } else {
+            manuallyHiddenAt = .distantPast
+            hiddenLocation = nil
+            last = Date()
+        }
+    }
+
+    func handleCanvasTap(onSingleTap: @escaping @MainActor () -> Void, onDoubleTap: @escaping @MainActor () -> Void) {
+        if let existing = tapTask {
+            existing.cancel()
+            tapTask = nil
+            onDoubleTap()
+            return
+        }
+        tapTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(210))
+            guard !Task.isCancelled else { return }
+            self?.tapTask = nil
+            onSingleTap()
+        }
+    }
 }
 
 struct VideoSurface: NSViewRepresentable {
@@ -21,6 +69,7 @@ struct VideoSurface: NSViewRepresentable {
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
+
 struct PlayerView: View {
     @ObservedObject var model: PlayerModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,53 +81,73 @@ struct PlayerView: View {
     @State private var activity = ActivityTracker()
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VideoSurface(model: model)
-                .ignoresSafeArea()
-                .onTapGesture(count: 2) { model.handleDoubleClick() }
-            if model.miniPlayer {
-                ContentUnavailableView {
-                    Label("Playing in Mini Player", systemImage: "pip")
-                } description: {
-                    Text("Playback continues in the floating window. Queue and settings remain available here.")
-                } actions: {
-                    Button("Return Video to This Window") { model.windowModes.restore(model) }
-                        .disabled(model.windowTransition)
-                }.foregroundStyle(.white)
-            } else if !model.loaded {
-                ContentUnavailableView {
-                    Label("A better view", systemImage: "play.rectangle")
-                } description: {
-                    Text("Drop a video here, or open a file to begin.")
-                } actions: {
-                    Button("Open Video…") { model.openPanel() }.buttonStyle(.borderedProminent)
-                }.foregroundStyle(.white)
-            }
-            GlassEffectContainer(spacing: 20) {
-                VStack {
-                    if model.showVideoInfo && model.loaded && !model.miniPlayer {
-                        HStack { VideoInformationHUD(model: model); Spacer(minLength: 0) }
+        HStack(spacing: 0) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                VideoSurface(model: model)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        activity.handleCanvasTap(
+                            onSingleTap: { handleSingleClick() },
+                            onDoubleTap: { model.handleDoubleClick() }
+                        )
                     }
-                    Spacer()
-                    if model.loaded {
-                        FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
-                        .frame(maxWidth: 780)
-                        .onHover {
-                            if hoveringControls != $0 { hoveringControls = $0 }
-                            revealControls()
+                if model.miniPlayer {
+                    ContentUnavailableView {
+                        Label("Playing in Mini Player", systemImage: "pip")
+                    } description: {
+                        Text("Playback continues in the floating window. Queue and settings remain available here.")
+                    } actions: {
+                        Button("Return Video to This Window") { model.windowModes.restore(model) }
+                            .disabled(model.windowTransition)
+                    }.foregroundStyle(.white)
+                } else if !model.loaded {
+                    ContentUnavailableView {
+                        Label("A better view", systemImage: "play.rectangle")
+                    } description: {
+                        Text("Drop a video here, or open a file to begin.")
+                    } actions: {
+                        Button("Open Video…") { model.openPanel() }.buttonStyle(.borderedProminent)
+                    }.foregroundStyle(.white)
+                }
+                GlassEffectContainer(spacing: 20) {
+                    VStack {
+                        if model.showVideoInfo && model.loaded && !model.miniPlayer {
+                            HStack { VideoInformationHUD(model: model); Spacer(minLength: 0) }
                         }
-                        .opacity(controlsVisible ? 1 : 0)
-                        .allowsHitTesting(controlsVisible)
-                        .accessibilityHidden(!controlsVisible)
-                    }
-                }.padding(model.miniPlayer ? 10 : 20)
-            }.environment(\.colorScheme, .dark)
+                        Spacer()
+                        if model.loaded {
+                            FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
+                            .frame(maxWidth: 780)
+                            .onHover {
+                                if hoveringControls != $0 { hoveringControls = $0 }
+                                revealControls()
+                            }
+                            .opacity(controlsVisible ? 1 : 0)
+                            .allowsHitTesting(controlsVisible)
+                            .accessibilityHidden(!controlsVisible)
+                        }
+                    }.padding(model.miniPlayer ? 10 : 20)
+                }.environment(\.colorScheme, .dark)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if model.inspector && !model.fullScreen && !model.miniPlayer {
+                PlayerSidebar(model: model)
+                    .frame(width: 310)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: model.inspector && !model.fullScreen && !model.miniPlayer)
         .frame(minWidth: 580, minHeight: 340)
         .ignoresSafeArea(.container, edges: model.fullScreen ? .all : [])
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
-        .onContinuousHover { phase in if case .active = phase { revealControls() } }
+        .onContinuousHover { phase in
+            if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
+                revealControls()
+            }
+        }
         .onReceive(timer) { now in
             if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
@@ -96,6 +165,7 @@ struct PlayerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
             guard let window = note.object as? NSWindow, window === model.window else { return }
+            window.toolbar?.isVisible = false
             model.windowModes.beginFullScreen(model)
             inspectorBeforeFullScreen = model.inspector
             model.inspector = false
@@ -108,10 +178,19 @@ struct PlayerView: View {
             model.queuePopover = false; model.quickSettings = false
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
-            if let window = note.object as? NSWindow, window === model.window { model.fullScreen = true; model.windowModes.finishFullScreen(model) }
+            if let window = note.object as? NSWindow, window === model.window {
+                window.toolbar?.isVisible = false
+                model.fullScreen = true
+                model.windowModes.finishFullScreen(model)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
-            if let window = note.object as? NSWindow, window === model.window { model.fullScreen = false; model.inspector = inspectorBeforeFullScreen; model.windowModes.finishFullScreen(model) }
+            if let window = note.object as? NSWindow, window === model.window {
+                model.fullScreen = false
+                window.toolbar?.isVisible = true
+                model.inspector = inspectorBeforeFullScreen
+                model.windowModes.finishFullScreen(model)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
             if let window = note.object as? NSWindow, window === model.window, model.miniPlayer, !model.windowTransition {
@@ -127,28 +206,29 @@ struct PlayerView: View {
         .onExitCommand { if model.queuePopover || model.quickSettings { model.queuePopover = false; model.quickSettings = false } else if model.miniPlayer { model.toggleMiniPlayer() } else if model.fullScreen { model.toggleFullScreen() } }
         .navigationTitle(model.title)
         .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button { model.openPanel() } label: { Label("Open", systemImage: "folder") }.help("Open media (⌘O)")
-                Menu {
-                    if model.recent.isEmpty { Text("No recent videos") }
-                    ForEach(model.recent, id: \.self) { path in
-                        Button(URL(fileURLWithPath: path).lastPathComponent) { model.open(URL(fileURLWithPath: path)) }
-                    }
-                } label: { Label("Recent", systemImage: "clock") }
-            }
-            ToolbarSpacer(.flexible, placement: .automatic)
-            ToolbarItemGroup(placement: .automatic) {
-                Toggle(isOn: $model.master) { Label("Enhancement", systemImage: "sparkles") }.help("Toggle all enhancements")
-                Button { model.toggleFullScreen() } label: { Label("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") }
-                Button { model.showSidebar("queue") } label: { Label("Play Queue", systemImage: "list.bullet") }
-                SettingsLink { Label("Settings", systemImage: "gearshape") }
-                Button { if model.inspector { model.inspector = false } else { model.showSidebar("enhance") } } label: { Label("Inspector", systemImage: "sidebar.right") }
+            if !model.fullScreen {
+                ToolbarItemGroup(placement: .automatic) {
+                    Button { model.openPanel() } label: { Label("Open", systemImage: "folder") }.help("Open media (⌘O)")
+                    Menu {
+                        if model.recent.isEmpty { Text("No recent videos") }
+                        ForEach(model.recent, id: \.self) { path in
+                            Button(URL(fileURLWithPath: path).lastPathComponent) { model.open(URL(fileURLWithPath: path)) }
+                        }
+                    } label: { Label("Recent", systemImage: "clock") }
+                }
+                ToolbarSpacer(.flexible, placement: .automatic)
+                ToolbarItemGroup(placement: .automatic) {
+                    Toggle(isOn: $model.master) { Label("Enhancement", systemImage: "sparkles") }.help("Toggle all enhancements")
+                    Button { model.toggleFullScreen() } label: { Label("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") }
+                    Button { model.showSidebar("queue") } label: { Label("Play Queue", systemImage: "list.bullet") }
+                    SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    Button { if model.inspector { model.inspector = false } else { model.showSidebar("enhance") } } label: { Label("Inspector", systemImage: "sidebar.right") }
+                }
             }
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbarColorScheme(.dark, for: .windowToolbar)
         .toolbar(model.fullScreen ? .hidden : .automatic, for: .windowToolbar)
-        .inspector(isPresented: Binding(get: { model.inspector && !model.fullScreen }, set: { model.inspector = $0 })) { PlayerSidebar(model: model).inspectorColumnWidth(min: 270, ideal: 310, max: 380) }
         .dropDestination(for: URL.self) { urls, _ in
             guard !urls.isEmpty else { return false }; model.openFiles(urls); return true
         }
@@ -157,6 +237,18 @@ struct PlayerView: View {
         activity.last = Date()
         if !controlsVisible {
             withAnimation(reduceMotion ? nil : .easeIn(duration: 0.15)) { controlsVisible = true }
+        }
+    }
+    private func handleSingleClick() {
+        if model.queuePopover || model.quickSettings {
+            model.queuePopover = false
+            model.quickSettings = false
+            return
+        }
+        guard model.loaded else { return }
+        activity.recordManualToggle(hiding: controlsVisible)
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            controlsVisible.toggle()
         }
     }
 }
