@@ -1,0 +1,59 @@
+{
+  "user-data/iive-status": {
+    "data": {
+      "updatedAt": 1791867461269,
+      "motion": 0,
+      "sr": "fsrcnnx",
+      "fault": "",
+      "indicators": {
+        "model": "FSRCNNX 16",
+        "sr": {
+          "detail": "FSRCNNX 16 \u00b7 GPU pass confirmed. Waiting for playback.",
+          "label": "Paused",
+          "tone": "neutral",
+          "phase": "paused"
+        },
+        "performance": {
+          "detail": "Overload checks resume after playback settles.",
+          "label": "Paused",
+          "tone": "neutral",
+          "phase": "paused"
+        },
+        "fi": {
+          "detail": "Frame interpolation is off.",
+          "label": "Off",
+          "tone": "neutral",
+          "phase": "off"
+        },
+        "overall": {
+          "detail": "Playback is paused; enabled effects resume with playback.",
+          "label": "Paused",
+          "tone": "neutral",
+          "phase": "paused"
+        }
+      },
+      "loaded": 1,
+      "srVerified": 1,
+      "motionVerified": 0,
+      "video": {
+        "gamma": "bt.1886",
+        "pixel": "videotoolbox",
+        "w": 1280,
+        "primaries": "bt.709",
+        "dh": 720,
+        "outW": 2560,
+        "dw": 1280,
+        "outH": 1440,
+        "fps": 24,
+        "h": 720
+      }
+    },
+    "request_id": 1,
+    "error": "success"
+  },
+  "pause": {
+    "data": true,
+    "request_id": 1,
+    "error": "success"
+  }
+}

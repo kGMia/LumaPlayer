@@ -1,0 +1,77 @@
+{
+  "frame_rate_conversion_supported" : true,
+  "gpu" : "Apple M5",
+  "low_latency_supported" : true,
+  "max_dimension" : 1920,
+  "max_pixels" : 2073600,
+  "metalfx_supported" : true,
+  "midpoint_smoke" : [
+    {
+      "height" : 720,
+      "output_luma_sample_sum" : 360203,
+      "process_ms" : [
+        7.2620416758581996,
+        5.6386249780189246,
+        4.351416660938412,
+        4.43579166312702,
+        4.0532916609663516,
+        3.6012916825711727
+      ],
+      "processed" : 1,
+      "scope" : "synthetic NV12 midpoint API smoke; not playback\/quality acceptance",
+      "start_ms" : 420.06266667158343,
+      "started" : true,
+      "width" : 1280
+    },
+    {
+      "height" : 1080,
+      "output_luma_sample_sum" : 873927,
+      "process_ms" : [
+        13.058916665613651,
+        9.9089166615158319,
+        9.7207916551269591,
+        9.8149583500344306,
+        9.7119999991264194,
+        9.7197499999310821
+      ],
+      "processed" : 1,
+      "scope" : "synthetic NV12 midpoint API smoke; not playback\/quality acceptance",
+      "start_ms" : 660.02804166055284,
+      "started" : true,
+      "width" : 1920
+    }
+  ],
+  "os" : "Version 27.2 (Build 26B5101f)",
+  "sizes" : [
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 720;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1280;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 720,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 720;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1280;\n}",
+      "width" : 1280
+    },
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 1080;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1920;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 1080,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 1080;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1920;\n}",
+      "width" : 1920
+    },
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 16;\n    ExtendedPixelsRight = 0;\n    Height = 2160;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 3840;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 2160,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 16;\n    ExtendedPixelsRight = 0;\n    Height = 2160;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 3840;\n}",
+      "width" : 3840
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "audio" : "first track passthrough with original PTS",
+  "dropped_frames" : 0,
+  "duplicates" : 0,
+  "fallback_to_source_cadence" : false,
+  "gpu_utilization" : null,
+  "kind" : "decode_rife_encode",
+  "latency_per_pair" : {
+    "mean_ms" : 8.0489221044168193,
+    "p50_ms" : 6.7218333424534649,
+    "p95_ms" : 10.139666643226519,
+    "samples" : 23
+  },
+  "media_seconds" : 1,
+  "note" : "Bounded synchronous pipeline, at most one adjacent pair and one interval of output frames. Includes setup and graph cold start; MOV output is not stock IINA realtime integration.",
+  "output" : "\/Users\/august\/Project\/video enhancer\/build\/rife-smoke-48-final.mov",
+  "output_frames" : 48,
+  "peak_rss_bytes" : 244105216,
+  "player_realtime" : null,
+  "scene_cuts" : 0,
+  "synthesized_frames" : 23,
+  "target_fps" : 48,
+  "throughput_fps" : 89.03210967441926,
+  "tier" : "fast",
+  "wall_seconds" : 0.5391313333529979
+}

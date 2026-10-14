@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-14",
+  "build_passed": true,
+  "build_elapsed_seconds": 6.477,
+  "build_log": "/var/folders/08/zt2t3jxd5w1_nbvg_8_96c800000gn/T/ActionArtifacts/default/BuildProject/BuildProject-Log-20261014-202922.txt",
+  "personal_team_signature_verified": true,
+  "artifact": "build/PersonalTeam/IIVE Player.app",
+  "validation_scope": "Xcode build and strict code signature verification only; GUI and playback acceptance delegated to user",
+  "visual_verified": false,
+  "floating_panel_runtime_verified": false,
+  "fullscreen_spaces_verified": false,
+  "new_performance_measurements": false,
+  "measured_transition_latency_ms": null
+}

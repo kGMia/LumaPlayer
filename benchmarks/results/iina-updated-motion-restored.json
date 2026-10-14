@@ -1,0 +1,48 @@
+{
+  "hwdec": {
+    "data": [
+      "auto"
+    ],
+    "request_id": 1,
+    "error": "success"
+  },
+  "vf": {
+    "data": [],
+    "request_id": 1,
+    "error": "success"
+  },
+  "estimated-vf-fps": {
+    "data": 24.0,
+    "request_id": 1,
+    "error": "success"
+  },
+  "user-data/iive-status": {
+    "data": {
+      "motionVerified": 0,
+      "fault": "",
+      "video": {
+        "gamma": "bt.1886",
+        "h": 720,
+        "w": 1280,
+        "outW": 1280,
+        "pixel": "yuv420p",
+        "outH": 720,
+        "dh": 720,
+        "fps": 24,
+        "primaries": "bt.709",
+        "dw": 1280
+      },
+      "loaded": 1,
+      "srVerified": 0,
+      "motion": 0,
+      "sr": "off"
+    },
+    "request_id": 1,
+    "error": "success"
+  },
+  "avsync": {
+    "data": 8e-06,
+    "request_id": 1,
+    "error": "success"
+  }
+}

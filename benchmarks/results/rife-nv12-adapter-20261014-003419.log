@@ -1,0 +1,29 @@
+● Video  --vid=1  (h264 1280x720 24 fps 6972 kbps) [default]
+○ Audio  --aid=1  (aac 1ch 48000 Hz 70 kbps) [default]
+[iive-rife] output pts=0.000000000 synthesized=0 generation=0
+VO: [null] 1280x720 nv12
+[iive-rife] output pts=0.020833333 synthesized=1 generation=0
+V: 00:00:00 / 00:00:01 (0%)
+[iive-rife] output pts=0.041666667 synthesized=0 generation=0
+V: 00:00:00 / 00:00:01 (0%)
+V: 00:00:00 / 00:00:01 (2%)
+[iive-rife] output pts=0.062500000 synthesized=1 generation=0
+V: 00:00:00 / 00:00:01 (2%)
+V: 00:00:00 / 00:00:01 (4%)
+[iive-rife] output pts=0.083333333 synthesized=0 generation=0
+V: 00:00:00 / 00:00:01 (4%)
+V: 00:00:00 / 00:00:01 (6%)
+[iive-rife] output pts=0.104166667 synthesized=1 generation=0
+V: 00:00:00 / 00:00:01 (6%)
+V: 00:00:00 / 00:00:01 (8%)
+[iive-rife] output pts=0.125000000 synthesized=0 generation=0
+V: 00:00:00 / 00:00:01 (8%)
+V: 00:00:00 / 00:00:01 (10%)
+[iive-rife] output pts=0.145833333 synthesized=1 generation=0
+V: 00:00:00 / 00:00:01 (10%)
+V: 00:00:00 / 00:00:01 (12%)
+[iive-rife] RIFE totals: emitted=8 synthesized=4 stale_jobs=1
+V: 00:00:00 / 00:00:01 (12%)
+[iive-rife] dropping request due to pin disconnect
+V: 00:00:00 / 00:00:01 (12%)
+Exiting... (Quit)

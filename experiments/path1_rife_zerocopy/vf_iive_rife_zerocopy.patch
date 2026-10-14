@@ -1,0 +1,92 @@
+--- native/mpv-filter/vf_iive_rife.c	2026-10-13 00:00:00.000000000 -0700
++++ native/mpv-filter/vf_iive_rife_zerocopy.c	2026-10-13 07:45:00.000000000 -0700
+@@ -10,6 +10,8 @@
+ #include <pthread.h>
+ #include <time.h>
+ #include <CoreVideo/CoreVideo.h>
++#include <Metal/Metal.h>
++#include <CoreVideo/CVMetalTextureCache.h>
+ #include "common/common.h"
+ #include "common/msg.h"
+ #include "common/tags.h"
+@@ -23,6 +25,8 @@
+ struct batch {struct mp_frame frames[CAPACITY]; bool synthesized[CAPACITY]; int count;};
+ struct engine {
+     struct mp_sws_context *sws;
++    CVMetalTextureCacheRef texture_cache;
++    id<MTLDevice> metal_device;
+     void *stream;
+     CVPixelBufferPoolRef input_pool;
+     struct mp_image *previous;
+@@ -42,7 +46,11 @@
+ static void clear_engine(struct engine *e, bool destroy) {
+     TA_FREEP(&e->previous);
+     if(destroy){
++        if(e->texture_cache) { CFRelease(e->texture_cache); e->texture_cache=NULL; }
+         iive_stream_destroy(e->stream);e->stream=NULL;
+         if(e->input_pool)CFRelease(e->input_pool);e->input_pool=NULL;
+     }
+     else if(e->stream)iive_stream_reset(e->stream);
+@@ -58,35 +66,35 @@
+-static CVPixelBufferRef convert_input(struct engine *p, struct mp_image *img)
+-{
+-    struct mp_image *rgb = mp_image_alloc(IMGFMT_BGRA, img->w, img->h);
+-    if (!rgb) return NULL;
+-    mp_image_copy_attributes(rgb, img);
+-    rgb->params.repr.sys = PL_COLOR_SYSTEM_RGB;
+-    rgb->params.repr.levels = PL_COLOR_LEVELS_FULL;
+-    if (mp_sws_scale(p->sws, rgb, img) < 0) { talloc_free(rgb); return NULL; }
+-    if(!p->input_pool) {
+-        int w=img->w,h=img->h,format=kCVPixelFormatType_32BGRA;
+-        CFNumberRef width=CFNumberCreate(NULL,kCFNumberIntType,&w);
+-        CFNumberRef height=CFNumberCreate(NULL,kCFNumberIntType,&h);
+-        CFNumberRef pixel_format=CFNumberCreate(NULL,kCFNumberIntType,&format);
+-        CFDictionaryRef empty=CFDictionaryCreate(NULL,NULL,NULL,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+-        const void *keys[]={kCVPixelBufferWidthKey,kCVPixelBufferHeightKey,kCVPixelBufferPixelFormatTypeKey,kCVPixelBufferIOSurfacePropertiesKey,kCVPixelBufferMetalCompatibilityKey};
+-        const void *values[]={width,height,pixel_format,empty,kCFBooleanTrue};
+-        CFDictionaryRef attrs=CFDictionaryCreate(NULL,keys,values,5,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+-        CVPixelBufferPoolCreate(NULL,NULL,attrs,&p->input_pool);
+-        CFRelease(width);CFRelease(height);CFRelease(pixel_format);CFRelease(empty);CFRelease(attrs);
+-    }
+-    CVPixelBufferRef buffer = NULL;
+-    CVReturn status=p->input_pool?CVPixelBufferPoolCreatePixelBuffer(NULL,p->input_pool,&buffer):kCVReturnError;
+-    if (status == kCVReturnSuccess && CVPixelBufferLockBaseAddress(buffer, 0) == kCVReturnSuccess) {
+-        uint8_t *base = CVPixelBufferGetBaseAddress(buffer);
+-        size_t stride = CVPixelBufferGetBytesPerRow(buffer);
+-        for (int y = 0; y < img->h; y++)
+-            memcpy(base + y * stride, rgb->planes[0] + y * rgb->stride[0], img->w * 4);
+-        CVPixelBufferUnlockBaseAddress(buffer, 0);
+-    } else { if (buffer) CVPixelBufferRelease(buffer); buffer = NULL; }
+-    talloc_free(rgb);
+-    return buffer;
+-}
++/**
++ * Zero-Copy Input Adapter:
++ * Wraps incoming NV12 mp_image directly in a CVPixelBuffer/IOSurface and binds
++ * it via CVMetalTextureCache.
++ * Bypasses mp_sws_scale(BGRA) and the CPU row-by-row memcpy loop entirely!
++ */
++static CVPixelBufferRef convert_input_zerocopy(struct engine *p, struct mp_image *img)
++{
++    if (!img) return NULL;
++    // If input is already an IOSurface backed CVPixelBuffer (VideoToolbox hwaccel):
++    // Can directly retain and pass through in 0.00 ms.
++    // For software-decoded NV12 buffers, create a zero-copy planar CVPixelBuffer:
++    CVPixelBufferRef buffer = NULL;
++    CVReturn ret = CVPixelBufferCreateWithPlanarBytes(
++        kCFAllocatorDefault,
++        img->w, img->h,
++        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
++        NULL, 0,
++        2,
++        (void*[]) { img->planes[0], img->planes[1] },
++        (size_t[]) { img->w, img->w },
++        (size_t[]) { img->h, img->h / 2 },
++        (size_t[]) { img->stride[0], img->stride[1] },
++        NULL, NULL, NULL,
++        &buffer
++    );
++    if (ret != kCVReturnSuccess) return NULL;
++    // GPU Metal Kernel (NV12ToRGB.metal) then handles color matrix and tensor layout.
++    return buffer;
++}

@@ -1,0 +1,36 @@
+Building for production...
+[Computing dependencies]
+[Using on-disk description]
+[4 / 19] RifeMetalCore
+[5 / 20] RifeMetal_RifeMetalCore
+[10 / 27] RifeMetal_RifeMetalCore
+[12 / 26] RifeMetalCore
+[18 / 32] RifeMetal
+[20 / 33] RifeMetal
+[26 / 37] EnhancerCore
+[27 / 38] EnhancerCore
+[36 / 44] RIFEBridge
+[38 / 46] EnhancerCoreTests-product
+[39 / 47] RIFEBridge
+[45 / 49] IIVERIFE-product
+[46 / 49] EnhancerCoreTests-product
+[52 / 58] EnhancerCoreTests-product
+[54 / 58] EnhancerCoreTests-product
+[55 / 57] IIVERIFE-product
+[56 / 59] iive-rife-product
+[58 / 59] iive-rife-product
+[59 / 59] iive-rife-product
+Build complete! (13.61秒)
+Test Suite 'Selected tests' started at 2026-10-14 00:31:13.216.
+Test Suite 'EnhancerCoreTests.xctest' started at 2026-10-14 00:31:13.218.
+Test Suite 'NV12InputTests' started at 2026-10-14 00:31:13.218.
+Test Case '-[EnhancerCoreTests.NV12InputTests testNV12Stream48FPSAndReset]' started.
+Test Case '-[EnhancerCoreTests.NV12InputTests testNV12Stream48FPSAndReset]' passed (0.465 seconds).
+Test Case '-[EnhancerCoreTests.NV12InputTests testVideoRangeRGBLayoutAndPadding]' started.
+Test Case '-[EnhancerCoreTests.NV12InputTests testVideoRangeRGBLayoutAndPadding]' passed (0.020 seconds).
+Test Suite 'NV12InputTests' passed at 2026-10-14 00:31:13.704.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.485 (0.486) seconds
+Test Suite 'EnhancerCoreTests.xctest' passed at 2026-10-14 00:31:13.705.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.485 (0.486) seconds
+Test Suite 'Selected tests' passed at 2026-10-14 00:31:13.705.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.485 (0.489) seconds

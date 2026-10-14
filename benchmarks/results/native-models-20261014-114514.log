@@ -1,0 +1,16 @@
+● Video  --vid=1  (h264 1280x720 24 fps 6972 kbps) [default]
+○ Audio  --aid=1  (aac 1ch 48000 Hz 70 kbps) [default]
+VO: [null] 2560x1440 nv12
+V: 00:00:00 / 00:00:01 (0%)
+V: 00:00:00 / 00:00:01 (2%)
+V: 00:00:00 / 00:00:01 (4%)
+V: 00:00:00 / 00:00:01 (6%)
+V: 00:00:00 / 00:00:01 (8%)
+V: 00:00:00 / 00:00:01 (10%)
+V: 00:00:00 / 00:00:01 (12%)
+V: 00:00:00 / 00:00:01 (15%)
+[iive-rife] RIFE totals: emitted=10 synthesized=5 stale_jobs=0
+V: 00:00:00 / 00:00:01 (15%)
+[iive-apple] Native enhancement totals: emitted=9 synthesized=0 stale_jobs=0
+V: 00:00:00 / 00:00:01 (15%)
+Exiting... (Quit)

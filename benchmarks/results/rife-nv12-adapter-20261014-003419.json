@@ -1,0 +1,25 @@
+{
+  "kind": "bounded_null_output_adapter_check",
+  "passed": true,
+  "filter": {
+    "state": "active",
+    "input_path": "nv12-metal",
+    "generated": "4",
+    "emitted": "8",
+    "generation": "0",
+    "stale_jobs_discarded": "0",
+    "queued": "0",
+    "inflight": "1",
+    "processing_ms": "14.667",
+    "mean_processing_ms": "103.376",
+    "peak_processing_ms": "372.948",
+    "fallback": "no"
+  },
+  "exit_code": 0,
+  "requested_output_limit": 48,
+  "adapter_emitted": 8,
+  "generated_observed": 4,
+  "pts_step_48fps_verified": true,
+  "presentation_verified": false,
+  "realtime_performance_verified": false
+}

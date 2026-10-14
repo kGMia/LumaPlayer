@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-14",
+  "build_passed": true,
+  "build_elapsed_seconds": 5.985,
+  "build_log": "/var/folders/08/zt2t3jxd5w1_nbvg_8_96c800000gn/T/ActionArtifacts/default/BuildProject/BuildProject-Log-20261014-204941.txt",
+  "personal_team_signature_verified": true,
+  "artifact": "build/PersonalTeam/IIVE Player.app",
+  "folder_scan_smoke_passed": true,
+  "validation_scope": "Xcode build, strict code signature verification, and folder enumeration smoke test",
+  "gui_verified": false,
+  "playlist_sort_runtime_verified": false,
+  "transition_latency_ms": null,
+  "new_model_performance_measurements": false
+}

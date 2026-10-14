@@ -1,0 +1,13 @@
+.research/
+.cache/
+node_modules/
+build/
+dist/
+com.apple.DeveloperTools/
+AppIcon.iconset/
+**/.build/
+**/.swiftpm/
+**/__pycache__/
+benchmarks/fixtures/
+*.dmg
+.DS_Store

@@ -1,0 +1,23 @@
+{
+  "cpu_utilization" : null,
+  "device" : "Apple M5",
+  "dropped_frames" : null,
+  "generated_fps" : 122.65585703838391,
+  "generated_frames" : 12,
+  "gpu_utilization" : null,
+  "height" : 720,
+  "kind" : "model_stream_midpoint",
+  "latency" : {
+    "mean_ms" : 8.0959444433877561,
+    "p50_ms" : 7.1272499917540699,
+    "p95_ms" : 11.318875011056662,
+    "samples" : 12
+  },
+  "note" : "Synthetic moving gradients. Inference + upstream padding\/cropping; excludes decode, encode, display and audio. Not player FPS.",
+  "peak_rss_bytes" : 159711232,
+  "player_realtime" : null,
+  "tier" : "fast",
+  "wall_seconds" : 0.097834708343725652,
+  "warmup_pushes" : 3,
+  "width" : 1280
+}

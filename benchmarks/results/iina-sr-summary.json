@@ -1,0 +1,16 @@
+{
+  "kind": "IINA live render GPU pass snapshot",
+  "input": [
+    1280,
+    720,
+    24
+  ],
+  "viewport": [
+    2560,
+    1440
+  ],
+  "fsrcnnx_passes": 14,
+  "sum_of_per_pass_averages_ms": 11.564493,
+  "display_fps": null,
+  "note": "Sum of rolling per-pass GPU averages, not wall latency or synchronized end-to-end samples. Observed UI 0 drops at FSRCNNX-only snapshot. Synthetic testsrc2; not natural-video quality validation."
+}

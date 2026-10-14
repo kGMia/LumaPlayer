@@ -1,0 +1,6 @@
+sandbox_extension_issue_file_to_process failed for /Users/august/Project/video enhancer/build/Xcode/Build/Products/Debug/IIVE Player.app: 1 (Operation not permitted)
+2026-10-13 21:14:35.023 IIVE Player[83454:4180385] Unable to find feedback application.
+2026-10-13 21:14:35.027 IIVE Player[83454:4180385] Unable to find feedback application.
+2026-10-13 21:14:35.038 IIVE Player[83454:4180391] Connection Invalid error for service com.apple.hiservices-xpcservice.
+2026-10-13 21:14:35.038 IIVE Player[83454:4180385] Error received in message reply handler: Connection invalid
+2026-10-13 21:14:35.102 IIVE Player[83454:4180385] +[NSXPCSharedListener endpointForReply:withListenerName:replyErrorCode:]: an error occurred while attempting to obtain endpoint for listener 'ClientCallsAuxiliary': Connection invalid

@@ -1,0 +1,7 @@
+mpv-version: mpv v0.38.0
+ffmpeg-version: 7.0.1
+mpv-configuration: -Dhtml-build=disabled -Djavascript=enabled -Dlibmpv=true -Dlua=luajit -Dlibarchive=enabled -Duchardet=enabled -Dlibbluray=enabled -Dcplayer=false -Dmacos-cocoa-cb=disabled -Dmacos-media-player=disabled -Dmacos-touchbar=disabled -Dmanpage-build=disabled -Dprefix=/opt/homebrew/Cellar/mpv-iina/HEAD-c0dd2b3 -Ddatadir=/opt/homebrew/Cellar/mpv-iina/HEAD-c0dd2b3/share/mpv-iina -Dlibdir=/opt/homebrew/Cellar/mpv-iina/HEAD-c0dd2b3/lib -Dsysconfdir=/opt/homebrew/etc/mpv-iina -Dbuildtype=release -Dwrap_mode=nofallback
+option-info/vf: {"name":"vf","type":"Object settings list","set-from-commandline":false,"set-locally":false,"default-value":[],"choices":["format","lavfi","lavfi-bridge","sub","fingerprint"]}
+option-info/glsl-shaders: {"name":"glsl-shaders","type":"String list","set-from-commandline":false,"set-locally":false,"default-value":[]}
+vapoursynth filter command result: -12
+minterpolate filter command result: 0

@@ -1,0 +1,73 @@
+{
+  "frame_rate_conversion_supported" : true,
+  "gpu" : "Apple M5",
+  "low_latency_sr_scales" : [
+    {
+      "height" : 360,
+      "scales" : [
+        1.5,
+        2
+      ],
+      "width" : 640
+    },
+    {
+      "height" : 540,
+      "scales" : [
+        1.5,
+        2
+      ],
+      "width" : 960
+    },
+    {
+      "height" : 720,
+      "scales" : [
+        1.5
+      ],
+      "width" : 1280
+    },
+    {
+      "height" : 1080,
+      "scales" : [
+
+      ],
+      "width" : 1920
+    }
+  ],
+  "low_latency_supported" : true,
+  "max_dimension" : 1920,
+  "max_pixels" : 2073600,
+  "metalfx_supported" : true,
+  "os" : "Version 27.2 (Build 26B5101f)",
+  "sizes" : [
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 720;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1280;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 720,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 720;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1280;\n}",
+      "width" : 1280
+    },
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 1080;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1920;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 1080,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 0;\n    ExtendedPixelsRight = 0;\n    Height = 1080;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 1920;\n}",
+      "width" : 1920
+    },
+    {
+      "configuration_created" : 1,
+      "destination_attributes" : "{\n    ExtendedPixelsBottom = 16;\n    ExtendedPixelsRight = 0;\n    Height = 2160;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 3840;\n}",
+      "formats" : [
+        "420v"
+      ],
+      "height" : 2160,
+      "source_attributes" : "{\n    ExtendedPixelsBottom = 16;\n    ExtendedPixelsRight = 0;\n    Height = 2160;\n    IOSurfaceProperties =     {\n    };\n    PixelFormatType = 875704438;\n    Width = 3840;\n}",
+      "width" : 3840
+    }
+  ]
+}

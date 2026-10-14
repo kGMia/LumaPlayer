@@ -1,0 +1,66 @@
+{
+  "user-data/iive-status": {
+    "data": {
+      "updatedAt": 1791864269302,
+      "sr": "off",
+      "video": {
+        "pixel": "videotoolbox",
+        "fps": 24,
+        "outH": 720,
+        "dh": 720,
+        "gamma": "bt.1886",
+        "dw": 1280,
+        "primaries": "bt.709",
+        "h": 720,
+        "outW": 1280,
+        "w": 1280
+      },
+      "loaded": 1,
+      "indicators": {
+        "sr": {
+          "phase": "bypassed",
+          "tone": "neutral",
+          "label": "Bypassed",
+          "detail": "Output size is below the selected shader\u2019s scaling threshold."
+        },
+        "overall": {
+          "phase": "bypassed",
+          "tone": "neutral",
+          "label": "Bypassed",
+          "detail": "Enhancement is enabled but not applicable to this video or output size."
+        },
+        "performance": {
+          "phase": "active",
+          "tone": "good",
+          "label": "Active",
+          "detail": "Monitoring dropped frames and A/V drift; not GPU utilization."
+        },
+        "model": "Off",
+        "fi": {
+          "phase": "off",
+          "tone": "neutral",
+          "label": "Off",
+          "detail": "Frame interpolation is off."
+        }
+      },
+      "srVerified": 0,
+      "motionVerified": 0,
+      "fault": "",
+      "motion": 0
+    },
+    "request_id": 1,
+    "error": "success"
+  },
+  "hwdec": {
+    "data": [
+      "auto"
+    ],
+    "request_id": 1,
+    "error": "success"
+  },
+  "vf": {
+    "data": [],
+    "request_id": 1,
+    "error": "success"
+  }
+}

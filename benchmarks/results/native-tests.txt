@@ -1,0 +1,45 @@
+Building for production...
+[Constructing description]
+[Planning deferred tasks]
+[13 / 42]
+[14 / 43] RifeMetalCore
+[15 / 44] RifeMetal_RifeMetalCore
+[17 / 46] RifeMetal_RifeMetalCore
+[19 / 45] RifeMetalCore
+[25 / 50] RifeMetal
+[27 / 51] RifeMetal
+[33 / 56] EnhancerCore
+[35 / 57] EnhancerCore
+[47 / 66] RIFEBridge
+[50 / 68] RIFEBridge
+[55 / 70] IIVERIFE-product
+[57 / 70] IIVERIFE-product
+[69 / 90]
+[73 / 90]
+[76 / 90]
+[77 / 90]
+[78 / 90] iive-rife-product
+[80 / 90] EnhancerCoreTests-product
+[86 / 90] iive-rife-product
+[88 / 92] EnhancerCoreTests-product
+[90 / 92] EnhancerCoreTests-product
+Build complete! (9.68秒)
+Test Suite 'All tests' started at 2026-10-12 19:16:15.773.
+Test Suite 'EnhancerCoreTests.xctest' started at 2026-10-12 19:16:15.774.
+Test Suite 'TimelineTests' started at 2026-10-12 19:16:15.774.
+Test Case '-[EnhancerCoreTests.TimelineTests test24to48AndReset]' started.
+Test Case '-[EnhancerCoreTests.TimelineTests test24to48AndReset]' passed (0.001 seconds).
+Test Case '-[EnhancerCoreTests.TimelineTests test24to60]' started.
+Test Case '-[EnhancerCoreTests.TimelineTests test24to60]' passed (0.000 seconds).
+Test Case '-[EnhancerCoreTests.TimelineTests testInvalidPTS]' started.
+Test Case '-[EnhancerCoreTests.TimelineTests testInvalidPTS]' passed (0.000 seconds).
+Test Suite 'TimelineTests' passed at 2026-10-12 19:16:15.776.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'EnhancerCoreTests.xctest' passed at 2026-10-12 19:16:15.776.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'All tests' passed at 2026-10-12 19:16:15.776.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.003) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

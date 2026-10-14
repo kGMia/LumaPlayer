@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "name": "lavfi",
+      "label": "iive-motion",
+      "enabled": true,
+      "params": {
+        "graph": "minterpolate=fps=48:mi_mode=mci:mc_mode=obmc:me_mode=bidir:vsbmc=0:scd=fdiff:scd_threshold=10"
+      }
+    }
+  ],
+  "request_id": 1,
+  "error": "success"
+}

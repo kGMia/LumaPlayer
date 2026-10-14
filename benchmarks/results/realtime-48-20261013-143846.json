@@ -1,0 +1,35 @@
+{
+  "kind": "visible_native_player_short_smoke",
+  "target_fps": 48,
+  "interactions": [],
+  "exit_code": 0,
+  "final": {
+    "filter": {
+      "state": "finished",
+      "generated": "287",
+      "emitted": "576",
+      "generation": "0",
+      "stale_jobs_discarded": "0",
+      "queued": "0",
+      "inflight": "0",
+      "processing_ms": "0.794",
+      "mean_processing_ms": "14.364",
+      "peak_processing_ms": "109.693",
+      "fallback": "no"
+    },
+    "dropped": 0,
+    "audio_driver": "coreaudio",
+    "pause": true,
+    "audio_device_count": 2
+  },
+  "ordered_pts_per_generation": true,
+  "sampled_processing_ms_mean": 13.387744186046511,
+  "sampled_processing_ms_p50": 13.27,
+  "sampled_processing_ms_p95": 18.242,
+  "render_callbacks_per_s_mean": 48.00066799266518,
+  "avsync_abs_s_p95": 9.124999934440048e-06,
+  "max_sampled_queue": 1,
+  "display_fps": null,
+  "sustained_realtime_verified": false,
+  "passed": true
+}

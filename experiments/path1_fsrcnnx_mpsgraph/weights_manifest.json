@@ -1,0 +1,116 @@
+{
+  "fsrcnnx8": {
+    "file": "fsrcnnx8_fp16.bin",
+    "weight_count": 2998,
+    "size_bytes": 5996,
+    "format": "float16",
+    "layers": [
+      {
+        "name": "conv1_expand",
+        "kernel": "5x5",
+        "in_channels": 1,
+        "out_channels": 32
+      },
+      {
+        "name": "conv2_shrink",
+        "kernel": "1x1",
+        "in_channels": 32,
+        "out_channels": 8
+      },
+      {
+        "name": "conv3_mapping1",
+        "kernel": "3x3",
+        "in_channels": 8,
+        "out_channels": 8
+      },
+      {
+        "name": "conv4_mapping2",
+        "kernel": "3x3",
+        "in_channels": 8,
+        "out_channels": 8
+      },
+      {
+        "name": "conv5_mapping3",
+        "kernel": "3x3",
+        "in_channels": 8,
+        "out_channels": 8
+      },
+      {
+        "name": "conv6_mapping4",
+        "kernel": "3x3",
+        "in_channels": 8,
+        "out_channels": 8
+      },
+      {
+        "name": "conv7_expand",
+        "kernel": "1x1",
+        "in_channels": 8,
+        "out_channels": 32
+      },
+      {
+        "name": "deconv_upscale",
+        "kernel": "9x9",
+        "in_channels": 32,
+        "out_channels": 1,
+        "stride": 2
+      }
+    ]
+  },
+  "fsrcnnx16": {
+    "file": "fsrcnnx16_fp16.bin",
+    "weight_count": 10722,
+    "size_bytes": 21444,
+    "format": "float16",
+    "layers": [
+      {
+        "name": "conv1_expand",
+        "kernel": "5x5",
+        "in_channels": 1,
+        "out_channels": 64
+      },
+      {
+        "name": "conv2_shrink",
+        "kernel": "1x1",
+        "in_channels": 64,
+        "out_channels": 16
+      },
+      {
+        "name": "conv3_mapping1",
+        "kernel": "3x3",
+        "in_channels": 16,
+        "out_channels": 16
+      },
+      {
+        "name": "conv4_mapping2",
+        "kernel": "3x3",
+        "in_channels": 16,
+        "out_channels": 16
+      },
+      {
+        "name": "conv5_mapping3",
+        "kernel": "3x3",
+        "in_channels": 16,
+        "out_channels": 16
+      },
+      {
+        "name": "conv6_mapping4",
+        "kernel": "3x3",
+        "in_channels": 16,
+        "out_channels": 16
+      },
+      {
+        "name": "conv7_expand",
+        "kernel": "1x1",
+        "in_channels": 16,
+        "out_channels": 64
+      },
+      {
+        "name": "deconv_upscale",
+        "kernel": "9x9",
+        "in_channels": 64,
+        "out_channels": 1,
+        "stride": 2
+      }
+    ]
+  }
+}

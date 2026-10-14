@@ -1,0 +1,148 @@
+● Video  --vid=1  (h264 1280x720 24 fps 6972 kbps) [default]
+● Audio  --aid=1  (aac 1ch 48000 Hz 70 kbps) [default]
+[iive-rife] output pts=0.000000000 synthesized=0 fallback=0
+AO: [null] 48000Hz mono 1ch floatp
+[iive-rife] output pts=0.020833333 synthesized=1 fallback=0
+VO: [libmpv] 1280x720 bgra
+[iive-rife] output pts=0.041666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (0%) A-V:  0.000
+[iive-rife] output pts=0.062500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (0%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (2%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (2%) A-V:  0.028 Dropped: 1
+[iive-rife] output pts=0.083333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (2%) A-V:  0.028 Dropped: 1
+AV: 00:00:00 / 00:00:01 (4%) A-V:  0.019 Dropped: 2
+[iive-rife] output pts=0.104166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (4%) A-V:  0.019 Dropped: 2
+AV: 00:00:00 / 00:00:01 (6%) A-V: -0.002 Dropped: 3
+[iive-rife] output pts=0.125000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (6%) A-V: -0.002 Dropped: 3
+AV: 00:00:00 / 00:00:01 (8%) A-V: -0.015 Dropped: 3
+[iive-rife] output pts=0.145833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (8%) A-V: -0.015 Dropped: 3
+AV: 00:00:00 / 00:00:01 (10%) A-V: -0.014 Dropped: 3
+[iive-rife] output pts=0.166666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (10%) A-V: -0.014 Dropped: 3
+AV: 00:00:00 / 00:00:01 (12%) A-V: -0.012 Dropped: 3
+[iive-rife] output pts=0.187500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (12%) A-V: -0.012 Dropped: 3
+AV: 00:00:00 / 00:00:01 (15%) A-V: -0.011 Dropped: 3
+[iive-rife] output pts=0.208333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (15%) A-V: -0.011 Dropped: 3
+AV: 00:00:00 / 00:00:01 (17%) A-V: -0.010 Dropped: 3
+[iive-rife] output pts=0.229166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (17%) A-V: -0.010 Dropped: 3
+AV: 00:00:00 / 00:00:01 (19%) A-V: -0.009 Dropped: 3
+[iive-rife] output pts=0.250000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (19%) A-V: -0.009 Dropped: 3
+AV: 00:00:00 / 00:00:01 (21%) A-V: -0.008 Dropped: 3
+[iive-rife] output pts=0.270833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (21%) A-V: -0.008 Dropped: 3
+AV: 00:00:00 / 00:00:01 (23%) A-V: -0.007 Dropped: 3
+[iive-rife] output pts=0.291666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (23%) A-V: -0.007 Dropped: 3
+AV: 00:00:00 / 00:00:01 (25%) A-V: -0.007 Dropped: 3
+[iive-rife] output pts=0.312500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (25%) A-V: -0.007 Dropped: 3
+AV: 00:00:00 / 00:00:01 (27%) A-V: -0.006 Dropped: 3
+[iive-rife] output pts=0.333333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (27%) A-V: -0.006 Dropped: 3
+AV: 00:00:00 / 00:00:01 (29%) A-V: -0.005 Dropped: 3
+[iive-rife] output pts=0.354166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (29%) A-V: -0.005 Dropped: 3
+AV: 00:00:00 / 00:00:01 (31%) A-V: -0.005 Dropped: 3
+[iive-rife] output pts=0.375000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (31%) A-V: -0.005 Dropped: 3
+AV: 00:00:00 / 00:00:01 (33%) A-V: -0.004 Dropped: 3
+[iive-rife] output pts=0.395833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (33%) A-V: -0.004 Dropped: 3
+AV: 00:00:00 / 00:00:01 (35%) A-V: -0.004 Dropped: 3
+[iive-rife] output pts=0.416666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (35%) A-V: -0.004 Dropped: 3
+AV: 00:00:00 / 00:00:01 (38%) A-V: -0.003 Dropped: 3
+[iive-rife] output pts=0.437500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (38%) A-V: -0.003 Dropped: 3
+AV: 00:00:00 / 00:00:01 (40%) A-V: -0.003 Dropped: 3
+[iive-rife] output pts=0.458333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (40%) A-V: -0.003 Dropped: 3
+AV: 00:00:00 / 00:00:01 (42%) A-V: -0.003 Dropped: 3
+[iive-rife] output pts=0.479166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (42%) A-V: -0.003 Dropped: 3
+AV: 00:00:00 / 00:00:01 (44%) A-V: -0.003 Dropped: 3
+[iive-rife] output pts=0.500000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (44%) A-V: -0.003 Dropped: 3
+AV: 00:00:00 / 00:00:01 (46%) A-V: -0.002 Dropped: 3
+[iive-rife] output pts=0.520833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (46%) A-V: -0.002 Dropped: 3
+AV: 00:00:00 / 00:00:01 (48%) A-V: -0.002 Dropped: 3
+[iive-rife] output pts=0.541666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (48%) A-V: -0.002 Dropped: 3
+AV: 00:00:00 / 00:00:01 (50%) A-V: -0.002 Dropped: 3
+[iive-rife] output pts=0.562500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (50%) A-V: -0.002 Dropped: 3
+AV: 00:00:00 / 00:00:01 (52%) A-V: -0.002 Dropped: 3
+[iive-rife] output pts=0.583333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (52%) A-V: -0.002 Dropped: 3
+AV: 00:00:00 / 00:00:01 (54%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.604166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (54%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (56%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.625000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (56%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (58%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.645833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (58%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (60%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.666666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (60%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (62%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.687500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (62%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (65%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.708333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (65%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (67%) A-V: -0.001 Dropped: 3
+[iive-rife] output pts=0.729166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (67%) A-V: -0.001 Dropped: 3
+AV: 00:00:00 / 00:00:01 (69%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.750000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (69%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (71%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.770833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (71%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (73%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.791666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (73%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (75%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.812500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (75%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (77%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.833333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (77%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (79%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.854166667 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (79%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (81%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.875000000 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (81%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (83%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.895833333 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (83%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (85%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.916666667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (85%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (88%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.937500000 synthesized=1 fallback=0
+AV: 00:00:00 / 00:00:01 (88%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (90%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.958333333 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (90%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (92%) A-V:  0.000 Dropped: 3
+[iive-rife] output pts=0.979166667 synthesized=0 fallback=0
+AV: 00:00:00 / 00:00:01 (92%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (94%) A-V:  0.000 Dropped: 3
+AV: 00:00:00 / 00:00:01 (96%) A-V:  0.000 Dropped: 3
+[iive-rife] RIFE totals: emitted=48 synthesized=23
+AV: 00:00:00 / 00:00:01 (96%) A-V:  0.000 Dropped: 3
+{"kind":"offscreen_libmpv_opengl","render_calls":45,"nonblack_readbacks":45,"eof":true,"display_fps":null}

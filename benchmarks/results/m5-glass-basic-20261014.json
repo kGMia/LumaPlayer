@@ -1,0 +1,59 @@
+{
+  "build": "passed",
+  "configuration": "Debug arm64 macOS 27",
+  "gui_checks": [
+    "video under floating glass controls",
+    "quick settings popover",
+    "native full-screen entry and Escape exit",
+    "full-screen inspector and toolbar hiding",
+    "live 720p24 source and 1440p48 filter output"
+  ],
+  "final_visual_adjustments": "Compiled; dark scrim and full-screen safe-area adjustment not visually rechecked because macOS locked.",
+  "runs": [
+    {
+      "metrics": "glass-ui-20261014.jsonl",
+      "active_samples": 47,
+      "observed_output": [
+        2560,
+        1440
+      ],
+      "output_fps_estimate": 47.99999999999999,
+      "sr_surface_path": "shared-iosurface",
+      "sr_copied_inputs_at_sample": "0",
+      "dropped_frames_max_including_startup": 1,
+      "last_sr": {
+        "backend": "fsrcnnx8-mpsgraph",
+        "copied_inputs": "0",
+        "emitted": "577",
+        "fallback": "no",
+        "generated": "0",
+        "generation": "2",
+        "inflight": "0",
+        "input_surface": "shared-iosurface",
+        "mean_processing_ms": "11.964",
+        "peak_processing_ms": "742.630",
+        "processing_ms": "0.000",
+        "queued": "0",
+        "shared_inputs": "577",
+        "stale_jobs_discarded": "0",
+        "state": "finished"
+      }
+    },
+    {
+      "metrics": "glass-ui-final-20261014.jsonl",
+      "active_samples": 47,
+      "observed_output": [
+        2560,
+        1440
+      ],
+      "output_fps_estimate": 47.99999999999999,
+      "sr_surface_path": "shared-iosurface",
+      "sr_copied_inputs_at_sample": "0",
+      "dropped_frames_max_including_startup": 1,
+      "last_sr": null
+    }
+  ],
+  "physical_display_fps": null,
+  "neural_accelerator_utilization": null,
+  "sustained_performance_verified": false
+}

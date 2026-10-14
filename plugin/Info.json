@@ -1,0 +1,19 @@
+{
+  "name": "IINA Video Enhancer",
+  "identifier": "org.iina-community.video-enhancer",
+  "description": "GPU super resolution with verified running status. Native RIFE is separate; CPU motion compensation has been retired.",
+  "version": "0.2.0",
+  "author": {
+    "name": "IINA Video Enhancer contributors"
+  },
+  "entry": "main.js",
+  "permissions": [
+    "file-system"
+  ],
+  "sidebarTab": {
+    "name": "Enhancement"
+  },
+  "preferenceDefaults": {
+    "config": {}
+  }
+}

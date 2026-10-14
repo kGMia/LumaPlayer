@@ -1,0 +1,262 @@
+[   0.001][v][cplayer] mpv v0.41.0-dev-g88eb9f2e7-dirty Copyright © 2000-2026 mpv/MPlayer/mplayer2 projects
+[   0.001][v][cplayer]  built on Oct 13 2026 00:13:33
+[   0.001][v][cplayer] libplacebo version: v7.360.1
+[   0.001][v][cplayer] FFmpeg version: 8.1.1
+[   0.001][v][cplayer] FFmpeg library versions:
+[   0.001][v][cplayer]    libavcodec      62.28.101
+[   0.001][v][cplayer]    libavfilter     11.14.101
+[   0.001][v][cplayer]    libavformat     62.12.101
+[   0.001][v][cplayer]    libavutil       60.26.101
+[   0.001][v][cplayer]    libswresample   6.3.101
+[   0.001][v][cplayer]    libswscale      9.5.101
+[   0.001][v][cplayer] Configuration: -Dbuildtype=release -Dauto_features=disabled -Dgpl=true -Dlibmpv=true -Dcplayer=true -Dgl=enabled -Dplain-gl=enabled -Dcoreaudio=enabled -Dswift-build=disabled
+[   0.001][v][cplayer] List of enabled features: bsd-fstatfs build-date coreaudio darwin ffmpeg gl glob glob-posix gpl libass libdl libplacebo mac-thread-name posix posix-shm
+[   0.001][v][cplayer] Command line options: '--no-config' '--vo=null' '--ao=null' '--untimed' '--hwdec=no' '--vf=iive-rife=fps=60:tier=fast:fallback=no' '--msg-level=iive-rife=v' '--log-file=benchmarks/results/mpv-rife-60.log' 'benchmarks/fixtures/tagged-720p24.mov'
+[   0.001][v][cplayer] mpv v0.41.0-dev-g88eb9f2e7-dirty Copyright © 2000-2026 mpv/MPlayer/mplayer2 projects
+[   0.001][v][cplayer]  built on Oct 13 2026 00:13:33
+[   0.001][v][cplayer] libplacebo version: v7.360.1
+[   0.001][v][cplayer] FFmpeg version: 8.1.1
+[   0.001][v][cplayer] FFmpeg library versions:
+[   0.001][v][cplayer]    libavcodec      62.28.101
+[   0.001][v][cplayer]    libavfilter     11.14.101
+[   0.001][v][cplayer]    libavformat     62.12.101
+[   0.001][v][cplayer]    libavutil       60.26.101
+[   0.001][v][cplayer]    libswresample   6.3.101
+[   0.001][v][cplayer]    libswscale      9.5.101
+[   0.001][v][cplayer] Configuration: -Dbuildtype=release -Dauto_features=disabled -Dgpl=true -Dlibmpv=true -Dcplayer=true -Dgl=enabled -Dplain-gl=enabled -Dcoreaudio=enabled -Dswift-build=disabled
+[   0.001][v][cplayer] List of enabled features: bsd-fstatfs build-date coreaudio darwin ffmpeg gl glob glob-posix gpl libass libdl libplacebo mac-thread-name posix posix-shm
+[   0.001][d][global] home path: '' -> '-'
+[   0.001][d][global] user path: '~~home/' -> ''
+[   0.001][d][global] user path: '~~old_home/' -> ''
+[   0.001][v][cplayer] Setting option 'config' = 'no' (flags = 8)
+[   0.001][v][cplayer] Setting option 'vo' = 'null' (flags = 8)
+[   0.001][v][cplayer] Setting option 'ao' = 'null' (flags = 8)
+[   0.001][v][cplayer] Setting option 'untimed' = '' (flags = 8)
+[   0.001][v][cplayer] Setting option 'hwdec' = 'no' (flags = 8)
+[   0.001][v][cplayer] Setting option 'vf' = 'iive-rife=fps=60:tier=fast:fallback=no' (flags = 8)
+[   0.001][v][cplayer] Setting option 'msg-level' = 'iive-rife=v' (flags = 8)
+[   0.001][v][cplayer] Setting option 'log-file' = 'benchmarks/results/mpv-rife-60.log' (flags = 8)
+[   0.001][v][clipboard] Initialized vo clipboard backend.
+[   0.002][v][cplayer] Waiting for scripts...
+[   0.002][v][cplayer] Done loading scripts.
+[   0.002][d][global] state path: 'watch_later' -> '-'
+[   0.002][d][global] state path: 'watch_later' -> '-'
+[   0.002][v][file] Opening /Users/august/Project/video enhancer/benchmarks/fixtures/tagged-720p24.mov
+[   0.002][d][file] resize stream to 131072 bytes, drop 0 bytes
+[   0.002][d][file] Stream opened successfully.
+[   0.002][v][demux] Trying demuxers for level=normal.
+[   0.002][d][demux] Trying demuxer: directory (force-level: normal)
+[   0.002][d][demux] Trying demuxer: disc (force-level: normal)
+[   0.002][d][demux] Trying demuxer: edl (force-level: normal)
+[   0.002][d][demux] Trying demuxer: cue (force-level: normal)
+[   0.002][d][demux] Trying demuxer: rawaudio (force-level: normal)
+[   0.002][d][demux] Trying demuxer: rawvideo (force-level: normal)
+[   0.002][d][demux] Trying demuxer: mkv (force-level: normal)
+[   0.002][d][demux] Trying demuxer: lavf (force-level: normal)
+[   0.003][v][lavf] Found 'mov,mp4,m4a,3gp,3g2,mj2' at score=100 size=2048.
+[   0.003][v][file] stream level seek from 131072 to 880584
+[   0.003][v][demux] Detected file format: mov,mp4,m4a,3gp,3g2,mj2 (libavformat)
+[   0.003][v][cplayer] Opening done: /Users/august/Project/video enhancer/benchmarks/fixtures/tagged-720p24.mov
+[   0.003][v][find_files] Loading external files in /Users/august/Project/video enhancer/benchmarks/fixtures/
+[   0.003][v][lavf] select track 0
+[   0.003][v][lavf] select track 1
+[   0.003][i][cplayer] ● Video  --vid=1  (h264 1280x720 24 fps 6972 kbps) [default]
+[   0.003][i][cplayer] ● Audio  --aid=1  (aac 1ch 48000 Hz 70 kbps) [default]
+[   0.003][v][vd] Container reported FPS: 24.000000
+[   0.003][v][vd] Codec list:
+[   0.003][v][vd]     h264 - H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[   0.003][v][vd] Opening decoder h264
+[   0.003][v][vd] No hardware decoding requested.
+[   0.003][v][vd] Using software decoding.
+[   0.003][v][vd] Detected 10 logical cores.
+[   0.003][v][vd] Requesting 11 threads for decoding.
+[   0.003][v][vd] Selected decoder: h264 - H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[   0.003][v][user_filter_wrapper] Setting option 'fps' = '60' (flags = 0)
+[   0.003][v][user_filter_wrapper] Setting option 'tier' = 'fast' (flags = 0)
+[   0.003][v][user_filter_wrapper] Setting option 'fallback' = 'no' (flags = 0)
+[   0.003][v][vf] User filter list:
+[   0.003][v][vf]   iive-rife (iive-rife.00)
+[   0.004][v][ad] Codec list:
+[   0.004][v][ad]     aac - AAC (Advanced Audio Coding)
+[   0.004][v][ad]     aac_fixed (aac) - AAC (Advanced Audio Coding)
+[   0.004][v][ad]     aac_at (aac) - aac (AudioToolbox)
+[   0.004][v][ad] Opening decoder aac
+[   0.004][v][ad] Requesting 1 threads for decoding.
+[   0.004][v][ad] Selected decoder: aac - AAC (Advanced Audio Coding)
+[   0.004][v][af] User filter list:
+[   0.004][v][af]   (empty)
+[   0.004][v][cplayer] Starting playback...
+[   0.004][v][file] stream level seek from 882554 to 36
+[   0.004][v][af] [in] 48000Hz mono 1ch floatp
+[   0.004][v][af] [userspeed] 48000Hz mono 1ch floatp
+[   0.004][v][af] [userspeed] (disabled)
+[   0.004][v][af] [convert] 48000Hz mono 1ch floatp
+[   0.004][d][ffmpeg/video] h264: Reinit context to 1280x720, pix_fmt: yuv420p
+[   0.004][d][vd] DR parameter change to 1280x738 yuv420p align=64
+[   0.004][d][vd] Allocating new (host-cached) DR image...
+[   0.004][d][vd] ...failed..
+[   0.004][v][vd] DR failed - disabling.
+[   0.004][v][lavf] EOF reached.
+[   0.006][v][vd] Using software decoding.
+[   0.006][v][vd] Decoder format: 1280x720 yuv420p bt.709/bt.709/bt.1886/limited/auto CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.006][v][vd] Using container aspect ratio.
+[   0.007][v][vf] [in] 1280x720 yuv420p bt.709/bt.709/bt.1886/limited/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.007][v][vf] [userdeint] 1280x720 yuv420p bt.709/bt.709/bt.1886/limited/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.007][v][vf] [userdeint] (disabled)
+[   0.007][v][vf] [iive-rife] 1280x720 yuv420p bt.709/bt.709/bt.1886/limited/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][iive-rife] output pts=0.000000000 synthesized=0 fallback=0
+[   0.163][v][vf] [autovflip] 1280x720 bgra rgb/bt.709/bt.1886/full/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][vf] [autovflip] (disabled)
+[   0.163][v][vf] [autorotate] 1280x720 bgra rgb/bt.709/bt.1886/full/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][vf] [autorotate] (disabled)
+[   0.163][v][vf] [convert] 1280x720 bgra rgb/bt.709/bt.1886/full/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][vf] [convert] (disabled)
+[   0.163][v][vf] [out] 1280x720 bgra rgb/bt.709/bt.1886/full/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][ao] Trying audio driver 'null'
+[   0.163][v][ao/null] requested format: 48000 Hz, mono channels, floatp
+[   0.163][v][ao/null] Channel layouts:
+[   0.163][v][ao/null]  - anything
+[   0.163][v][ao/null] result: mono
+[   0.163][v][ao/null] device buffer: 9472 samples.
+[   0.163][v][ao/null] using soft-buffer of 9600 samples.
+[   0.163][i][cplayer] AO: [null] 48000Hz mono 1ch floatp
+[   0.163][v][cplayer] AO: Description: Null audio output
+[   0.163][i][cplayer] VO: [null] 1280x720 bgra
+[   0.163][v][cplayer] VO: Description: Null video output
+[   0.163][v][vo/null] reconfig to 1280x720 bgra rgb/bt.709/bt.1886/full/display CL=mpeg2/4/h264 crop=1280x720+0+0 A=none
+[   0.163][v][cplayer] first video frame after restart shown
+[   0.163][v][af] [convert] (disabled)
+[   0.163][v][af] [out] 48000Hz mono 1ch floatp
+[   0.163][v][cplayer] audio ready
+[   0.163][d][cplayer] starting video playback
+[   0.163][v][cplayer] delaying audio start 0.000000 vs. 0.000000, diff=0.000000
+[   0.163][v][cplayer] playback restart complete @ 0.000000, audio=ready, video=playing
+[   0.164][v][iive-rife] output pts=0.016666667 synthesized=1 fallback=0
+[   0.164][v][cplayer] starting audio playback
+[   0.164][v][ao/null] starting AO
+[   0.164][v][iive-rife] output pts=0.033333333 synthesized=1 fallback=0
+[   0.178][v][iive-rife] output pts=0.050000000 synthesized=1 fallback=0
+[   0.178][v][iive-rife] output pts=0.066666667 synthesized=1 fallback=0
+[   0.219][v][iive-rife] output pts=0.083333333 synthesized=0 fallback=0
+[   0.219][v][iive-rife] output pts=0.100000000 synthesized=1 fallback=0
+[   0.219][v][iive-rife] output pts=0.116666667 synthesized=1 fallback=0
+[   0.273][v][iive-rife] output pts=0.133333333 synthesized=1 fallback=0
+[   0.273][v][iive-rife] output pts=0.150000000 synthesized=1 fallback=0
+[   0.288][v][iive-rife] output pts=0.166666667 synthesized=0 fallback=0
+[   0.310][v][iive-rife] output pts=0.183333333 synthesized=1 fallback=0
+[   0.327][v][iive-rife] output pts=0.200000000 synthesized=1 fallback=0
+[   0.367][v][iive-rife] output pts=0.216666667 synthesized=1 fallback=0
+[   0.367][v][iive-rife] output pts=0.233333333 synthesized=1 fallback=0
+[   0.392][v][iive-rife] output pts=0.250000000 synthesized=0 fallback=0
+[   0.393][v][iive-rife] output pts=0.266666667 synthesized=1 fallback=0
+[   0.395][v][iive-rife] output pts=0.283333333 synthesized=1 fallback=0
+[   0.454][v][iive-rife] output pts=0.300000000 synthesized=1 fallback=0
+[   0.454][v][iive-rife] output pts=0.316666667 synthesized=1 fallback=0
+[   0.473][v][iive-rife] output pts=0.333333333 synthesized=0 fallback=0
+[   0.474][v][iive-rife] output pts=0.350000000 synthesized=1 fallback=0
+[   0.499][v][iive-rife] output pts=0.366666667 synthesized=1 fallback=0
+[   0.528][v][iive-rife] output pts=0.383333333 synthesized=1 fallback=0
+[   0.529][v][iive-rife] output pts=0.400000000 synthesized=1 fallback=0
+[   0.547][v][iive-rife] output pts=0.416666667 synthesized=0 fallback=0
+[   0.566][v][iive-rife] output pts=0.433333333 synthesized=1 fallback=0
+[   0.583][v][iive-rife] output pts=0.450000000 synthesized=1 fallback=0
+[   0.605][v][iive-rife] output pts=0.466666667 synthesized=1 fallback=0
+[   0.605][v][iive-rife] output pts=0.483333333 synthesized=1 fallback=0
+[   0.660][v][iive-rife] output pts=0.500000000 synthesized=0 fallback=0
+[   0.661][v][iive-rife] output pts=0.516666667 synthesized=1 fallback=0
+[   0.662][v][iive-rife] output pts=0.533333333 synthesized=1 fallback=0
+[   0.710][v][iive-rife] output pts=0.550000000 synthesized=1 fallback=0
+[   0.710][v][iive-rife] output pts=0.566666667 synthesized=1 fallback=0
+[   0.730][v][iive-rife] output pts=0.583333333 synthesized=0 fallback=0
+[   0.730][v][iive-rife] output pts=0.600000000 synthesized=1 fallback=0
+[   0.731][v][iive-rife] output pts=0.616666667 synthesized=1 fallback=0
+[   0.763][v][af] filter input EOF
+[   0.763][v][af] filter output EOF
+[   0.763][v][cplayer] audio filter EOF
+[   0.785][v][iive-rife] output pts=0.633333333 synthesized=1 fallback=0
+[   0.785][v][cplayer] audio draining
+[   0.785][v][cplayer] audio EOF reached
+[   0.785][v][iive-rife] output pts=0.650000000 synthesized=1 fallback=0
+[   0.806][v][iive-rife] output pts=0.666666667 synthesized=0 fallback=0
+[   0.806][v][iive-rife] output pts=0.683333333 synthesized=1 fallback=0
+[   0.807][v][iive-rife] output pts=0.700000000 synthesized=1 fallback=0
+[   0.829][v][iive-rife] output pts=0.716666667 synthesized=1 fallback=0
+[   0.829][v][iive-rife] output pts=0.733333333 synthesized=1 fallback=0
+[   0.851][v][iive-rife] output pts=0.750000000 synthesized=0 fallback=0
+[   0.852][v][iive-rife] output pts=0.766666667 synthesized=1 fallback=0
+[   0.852][v][iive-rife] output pts=0.783333333 synthesized=1 fallback=0
+[   0.875][v][iive-rife] output pts=0.800000000 synthesized=1 fallback=0
+[   0.875][v][iive-rife] output pts=0.816666667 synthesized=1 fallback=0
+[   0.899][v][iive-rife] output pts=0.833333333 synthesized=0 fallback=0
+[   0.899][v][iive-rife] output pts=0.850000000 synthesized=1 fallback=0
+[   0.900][v][iive-rife] output pts=0.866666667 synthesized=1 fallback=0
+[   0.924][v][iive-rife] output pts=0.883333333 synthesized=1 fallback=0
+[   0.924][v][iive-rife] output pts=0.900000000 synthesized=1 fallback=0
+[   0.948][v][iive-rife] output pts=0.916666667 synthesized=0 fallback=0
+[   0.949][v][iive-rife] output pts=0.933333333 synthesized=1 fallback=0
+[   0.949][v][iive-rife] output pts=0.950000000 synthesized=1 fallback=0
+[   0.950][v][vf] filter input EOF
+[   0.950][v][iive-rife] output pts=0.966666667 synthesized=0 fallback=0
+[   0.950][v][iive-rife] output pts=0.983333333 synthesized=0 fallback=0
+[   0.962][v][vf] filter output EOF
+[   0.962][v][cplayer] using demuxer frame duration for last frame
+[   0.962][d][cplayer] video EOF (status=3)
+[   0.962][d][cplayer] video EOF (status=3)
+[   0.977][v][ao/null] audio end or underrun
+[   0.977][d][cplayer] video EOF (status=3)
+[   0.977][d][cplayer] video EOF (status=3)
+[   0.979][v][cplayer] video EOF reached
+[   0.979][d][cplayer] video EOF (status=4)
+[   0.979][v][cplayer] EOF code: 1  
+[   0.979][d][ad] Uninit decoder.
+[   0.979][v][ad] dropping request due to pin disconnect
+[   0.979][v][ad] dropping request due to pin disconnect
+[   0.980][v][demux_in] dropping request due to pin disconnect
+[   0.980][v][af] dropping request due to pin disconnect
+[   0.980][v][nop] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][autoaspeed] dropping request due to pin disconnect
+[   0.980][v][autoaspeed] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][autoconvert] dropping request due to pin disconnect
+[   0.980][v][autoconvert] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][nop] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][ao] dropping request due to pin disconnect
+[   0.980][v][async_queue_in] dropping request due to pin disconnect
+[   0.980][d][vd] Uninit decoder.
+[   0.980][v][vd] dropping request due to pin disconnect
+[   0.980][v][vd] dropping request due to pin disconnect
+[   0.980][v][demux_in] dropping request due to pin disconnect
+[   0.980][v][vf] dropping request due to pin disconnect
+[   0.980][v][nop] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][deint] dropping request due to pin disconnect
+[   0.980][v][deint] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][autovflip] dropping request due to pin disconnect
+[   0.980][v][autovflip] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][autorotate] dropping request due to pin disconnect
+[   0.980][v][autorotate] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][autoconvert] dropping request due to pin disconnect
+[   0.980][v][autoconvert] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][v][nop] dropping request due to pin disconnect
+[   0.980][v][user_filter_wrapper] dropping request due to pin disconnect
+[   0.980][i][iive-rife] RIFE totals: emitted=60 synthesized=46
+[   0.980][v][iive-rife] dropping request due to pin disconnect
+[   0.980][v][iive-rife] dropping request due to pin disconnect
+[   0.980][v][vf] dropping request due to pin disconnect
+[   0.980][d][cplayer] Terminating demuxers...
+[   0.980][d][cplayer] Done terminating demuxers.
+[   0.980][v][cplayer] finished playback, success (reason 0)
+[   0.980][i][cplayer] Exiting... (End of file)
+[   0.980][d][dnd] Destroying client handle...
+[   0.980][v][cplayer] draining left over audio
+[   1.182][v][ao/null] audio end or underrun

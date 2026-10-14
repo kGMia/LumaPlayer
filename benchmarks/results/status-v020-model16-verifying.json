@@ -1,0 +1,52 @@
+{
+  "data": {
+    "updatedAt": 1791867411274,
+    "motion": 0,
+    "sr": "fsrcnnx",
+    "fault": "",
+    "indicators": {
+      "sr": {
+        "phase": "verifying",
+        "label": "Verifying",
+        "tone": "progress",
+        "detail": "FSRCNNX 16 \u00b7 resume to verify GPU execution."
+      },
+      "model": "FSRCNNX 16",
+      "overall": {
+        "phase": "paused",
+        "label": "Paused",
+        "tone": "neutral",
+        "detail": "Playback is paused; enabled effects resume with playback."
+      },
+      "performance": {
+        "phase": "paused",
+        "label": "Paused",
+        "tone": "neutral",
+        "detail": "Overload checks resume after playback settles."
+      },
+      "fi": {
+        "phase": "off",
+        "label": "Off",
+        "tone": "neutral",
+        "detail": "Frame interpolation is off."
+      }
+    },
+    "loaded": 1,
+    "srVerified": 0,
+    "motionVerified": 0,
+    "video": {
+      "gamma": "bt.1886",
+      "pixel": "videotoolbox",
+      "w": 1280,
+      "primaries": "bt.709",
+      "dh": 720,
+      "outW": 2560,
+      "dw": 1280,
+      "outH": 1440,
+      "fps": 24,
+      "h": 720
+    }
+  },
+  "request_id": 1,
+  "error": "success"
+}

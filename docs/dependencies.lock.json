@@ -1,0 +1,50 @@
+{
+  "iina": "2afb9f20f6b4a049f9db066e55b4b7a457fa4e81",
+  "upscaler": "f9521e1fa6cc0097c83716f16a554cde676e4ab9",
+  "rife-metal": "1fef4869a44fca32848102b9f6a774a20eb50db6",
+  "mpv": "88eb9f2e73945d8bc9c133a2f67babaa9af34680",
+  "fsrcnn": "ea173caa522924e75b5ad0ae5c89d0595ec5d495",
+  "rife": "bbfd2ea90910789a860ea3e2b32a240cd577b75e",
+  "ravu": "b3f0a59d68f33b7162051ea5970a5169558f0ea2",
+  "shaders": {
+    "FSRCNNX_x2_8-0-4-1.glsl": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae",
+    "FSRCNNX_x2_16-0-4-1.glsl": "d5a24a271e5d9a3f7f7a053b150c460a44c25b3cf7f770857d57cc3a2e1c9965",
+    "CAS.glsl": "a945e104f1c7dfa9ffff447e14ea94f661e87f96010df79e1e8a0da2899a9823",
+    "ravu-lite-r3.hook": "59e77e138444f23db718988b015b9f496b1517f79efeb75806066d7e7ba8e928"
+  },
+  "iina_tested_tags": {
+    "v1.4.4": "c111221",
+    "v1.5.0": "ed42c94dddb51c711c2f19f11c86f5b86b175280"
+  },
+  "native_adapter_build": {
+    "mpv": "88eb9f2e73945d8bc9c133a2f67babaa9af34680",
+    "libplacebo": "7.360.1",
+    "libass": "0.17.5",
+    "ffmpeg": "8.1.1",
+    "meson": "1.12.1",
+    "ninja": "1.13.2",
+    "pkgconf": "3.0.8",
+    "lcms2": "2.19"
+  },
+  "sr_evaluation_only": {
+    "Real-ESRGAN": {
+      "revision": "a4abfb2979a7bbff3f69f58f58ae324608821e27",
+      "source": "https://github.com/xinntao/Real-ESRGAN",
+      "code_license": "BSD-3-Clause",
+      "weights_downloaded": false
+    },
+    "SwinIR": {
+      "revision": "6545850fbf8df298df73d81f3e8cba638787c8bd",
+      "source": "https://github.com/JingyunLiang/SwinIR",
+      "code_license": "Apache-2.0",
+      "weights_downloaded": false
+    }
+  },
+  "native_color_management": {
+    "source": "https://github.com/mm2/Little-CMS",
+    "version": "2.19",
+    "license": "MIT",
+    "provided_by": "Homebrew lcms2 / little-cms2",
+    "build_option": "-Dlcms2=enabled"
+  }
+}

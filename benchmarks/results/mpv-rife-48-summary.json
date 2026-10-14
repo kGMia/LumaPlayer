@@ -1,0 +1,10 @@
+{
+  "kind": "mpv_native_filter_null_output",
+  "target_fps": 48,
+  "output_frames": 48,
+  "synthesized_frames": 23,
+  "monotonic_pts": true,
+  "target_cadence": true,
+  "display_fps": null,
+  "realtime_verified": false
+}

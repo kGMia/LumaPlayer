@@ -1,0 +1,13 @@
+{
+  "kind": "mpv_native_filter_null_output",
+  "target_fps": 48,
+  "exit_code": 0,
+  "output_frames": 48,
+  "synthesized_frames": 23,
+  "monotonic_pts": true,
+  "target_cadence": true,
+  "wall_seconds": 1.4122414170124102,
+  "display_fps": null,
+  "realtime_verified": false,
+  "passed": true
+}

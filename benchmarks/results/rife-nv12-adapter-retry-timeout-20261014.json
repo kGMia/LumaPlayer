@@ -1,0 +1,5 @@
+{
+  "passed": false,
+  "reason": "Metadata sampling missed short filter lifetime with --frames=8; log emitted 9 frames including 4 generated before filter removal. Harness timeout, not a successful final check.",
+  "log": "rife-nv12-adapter-20261014.log"
+}

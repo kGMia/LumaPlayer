@@ -1,0 +1,62 @@
+{
+  "hwdec": {
+    "data": [
+      "no"
+    ],
+    "request_id": 1,
+    "error": "success"
+  },
+  "vf": {
+    "data": [
+      {
+        "name": "lavfi",
+        "label": "iive-motion",
+        "enabled": true,
+        "params": {
+          "graph": "minterpolate=fps=48:mi_mode=mci:mc_mode=obmc:me_mode=bidir:vsbmc=0:scd=fdiff:scd_threshold=10"
+        }
+      }
+    ],
+    "request_id": 1,
+    "error": "success"
+  },
+  "estimated-vf-fps": {
+    "data": 48.0,
+    "request_id": 1,
+    "error": "success"
+  },
+  "user-data/iive-status": {
+    "data": {
+      "motionVerified": 1,
+      "fault": "",
+      "video": {
+        "gamma": "bt.1886",
+        "h": 720,
+        "w": 1280,
+        "outW": 1280,
+        "pixel": "yuv420p",
+        "outH": 720,
+        "dh": 720,
+        "fps": 24,
+        "primaries": "bt.709",
+        "dw": 1280
+      },
+      "loaded": 1,
+      "srVerified": 0,
+      "motion": 1,
+      "sr": "off"
+    },
+    "request_id": 1,
+    "error": "success"
+  },
+  "avsync": {
+    "data": 3.761489,
+    "request_id": 1,
+    "error": "success"
+  },
+  "frame-drop-count": {
+    "data": 62,
+    "request_id": 1,
+    "error": "success"
+  }
+}

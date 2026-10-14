@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+export CLANG_MODULE_CACHE_PATH="$PWD/.cache/clang"
+export IIVE_GPU_TESTS=1
+python3 scripts/export-fsrcnnx.py
+swift test --package-path native/FSRCNNXMetal -c release --disable-sandbox \
+  --cache-path "$PWD/.cache/swift" --filter ModelTests

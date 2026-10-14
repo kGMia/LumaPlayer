@@ -1,0 +1,14 @@
+{
+  "fi": "apple",
+  "sr": "apple",
+  "scope": "short real-render integration; no quality or sustained performance acceptance",
+  "error": "playback timeout",
+  "exit_code": -15,
+  "fi_last": null,
+  "fi_active_seen": false,
+  "shader_pass_seen": false,
+  "sr_last": null,
+  "sr_active_seen": false,
+  "render_callbacks_fps_samples": [],
+  "passed": false
+}

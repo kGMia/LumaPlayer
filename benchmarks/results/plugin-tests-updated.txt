@@ -1,0 +1,20 @@
+
+> iina-video-enhancer@0.1.0 test
+> node --test tests/*.test.mjs
+
+✔ threshold and HDR guard (0.937583ms)
+✔ validation rejects malformed preferences (0.133958ms)
+✔ ownership preserves external live edits (1.612625ms)
+✔ missing property is not treated as empty shader list (0.280292ms)
+✔ shader selection is not execution evidence (0.105167ms)
+✔ fallback needs three bad samples, cooldown and explicit recovery (0.12925ms)
+✔ decode restore does not overwrite a later external change (0.072459ms)
+✔ mpv 0.41 decoder string-list survives a software-decode lease (0.062458ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 112.56325

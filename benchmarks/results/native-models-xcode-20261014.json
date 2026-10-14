@@ -1,0 +1,12 @@
+{
+  "command": "scripts/build-player-modern.sh",
+  "configuration": "Debug",
+  "architecture": "arm64",
+  "deployment_target": "macOS 27.0",
+  "passed": true,
+  "diagnostics": [
+    "2026-10-14 10:36:59.674 appintentsmetadataprocessor[96121:4662235] warning: Metadata extraction skipped, no AppIntents.framework dependency found"
+  ],
+  "full_test_suite_run": false,
+  "includes_updated_license_notices": true
+}

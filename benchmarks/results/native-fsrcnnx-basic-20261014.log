@@ -1,0 +1,31 @@
+Building for production...
+[Pre-planning 1 / 152]
+[Planning deferred tasks]
+[12 / 32]
+[16 / 33] FSRCNNXMetal
+[17 / 34] FSRCNNXMetal
+[28 / 40] IIVEFSR-product
+[30 / 40] IIVEFSR-product
+[31 / 41] FSRCNNXMetalTests-product
+[43 / 68]
+[47 / 68]
+[49 / 68]
+[53 / 68]
+[54 / 68]
+[57 / 68]
+[58 / 68]
+[59 / 68] FSRCNNXMetalTests-product
+[64 / 68] FSRCNNXMetalTests-product
+[66 / 68] FSRCNNXMetalTests-product
+Build complete! (6.21秒)
+Test Suite 'Selected tests' started at 2026-10-14 00:52:44.148.
+Test Suite 'FSRCNNXMetalTests.xctest' started at 2026-10-14 00:52:44.150.
+Test Suite 'ModelTests' started at 2026-10-14 00:52:44.150.
+Test Case '-[FSRCNNXMetalTests.ModelTests testTrainedModelsAgainstSmallReference]' started.
+Test Case '-[FSRCNNXMetalTests.ModelTests testTrainedModelsAgainstSmallReference]' passed (1.320 seconds).
+Test Suite 'ModelTests' passed at 2026-10-14 00:52:45.471.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.320 (1.321) seconds
+Test Suite 'FSRCNNXMetalTests.xctest' passed at 2026-10-14 00:52:45.471.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.320 (1.321) seconds
+Test Suite 'Selected tests' passed at 2026-10-14 00:52:45.471.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.320 (1.323) seconds

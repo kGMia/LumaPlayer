@@ -1,0 +1,21 @@
+{
+  "kind": "eight_frame_null_output_adapter_check",
+  "passed": true,
+  "filter": {
+    "state": "active",
+    "input_path": "nv12-metal",
+    "generated": "4",
+    "emitted": "9",
+    "generation": "0",
+    "stale_jobs_discarded": "0",
+    "queued": "1",
+    "inflight": "0",
+    "processing_ms": "14.192",
+    "mean_processing_ms": "84.830",
+    "peak_processing_ms": "397.245",
+    "fallback": "no"
+  },
+  "exit_code": 0,
+  "presentation_verified": false,
+  "realtime_performance_verified": false
+}

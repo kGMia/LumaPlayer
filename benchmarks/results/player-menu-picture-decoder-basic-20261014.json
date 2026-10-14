@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-14",
+  "build_passed": true,
+  "build_elapsed_seconds": 6.15,
+  "build_log": "/var/folders/08/zt2t3jxd5w1_nbvg_8_96c800000gn/T/ActionArtifacts/default/BuildProject/BuildProject-Log-20261014-213918.txt",
+  "signature_verified": true,
+  "artifact": "build/PersonalTeam/IIVE Player.app",
+  "lcms2_version": "2.19",
+  "lcms2_compiled": true,
+  "videotoolbox_gl_compiled": true,
+  "decoder_candidates_enumerated": true,
+  "hardware_decode_runtime_verified": false,
+  "icc_visual_accuracy_verified": false,
+  "gpu_utilization_available": false,
+  "final_empty_queue_layout_verified": false,
+  "computer_use_stopped_after_user_request": true,
+  "full_playback_validation": false
+}

@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-14",
+  "scope": "Basic build and focused checks only; final visual/playback acceptance delegated to user",
+  "build": {
+    "passed": true,
+    "log": "/var/folders/08/zt2t3jxd5w1_nbvg_8_96c800000gn/T/ActionArtifacts/default/BuildProject/BuildProject-Log-20261014-194030.txt"
+  },
+  "folder_scanner": {
+    "passed": true,
+    "method": "Xcode RunCodeSnippet invoking production FolderMedia.files",
+    "checks": [
+      "natural 1/2/10 sorting",
+      "hidden exclusion",
+      "non-media exclusion",
+      "directory exclusion",
+      "symlink exclusion"
+    ]
+  },
+  "ui": {
+    "earlier_mini_window_ax_width": 440,
+    "earlier_mini_restore_control_present": true,
+    "final_fullscreen_popover_visually_verified": false,
+    "final_capsule_picker_visually_verified": false
+  },
+  "hardware_decoder_runtime_verified": false,
+  "new_performance_measurements": false,
+  "signing": {
+    "identity_type": "Apple Development",
+    "personal_team_configured": true,
+    "final_artifact_strict_verification": true
+  },
+  "artifact": "build/PersonalTeam/IIVE Player.app"
+}

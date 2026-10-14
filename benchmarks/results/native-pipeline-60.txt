@@ -1,0 +1,189 @@
+● Video  --vid=1  (h264 1280x720 24 fps 6972 kbps) [default]
+● Audio  --aid=1  (aac 1ch 48000 Hz 70 kbps) [default]
+AO: [null] 48000Hz mono 1ch floatp
+[iive-rife] output pts=0.000000000 synthesized=0 generation=0
+VO: [null] 1280x720 bgra
+[iive-rife] output pts=0.016666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (0%) A-V:  0.000
+[iive-rife] output pts=0.033333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (0%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (2%) A-V: -0.015
+[iive-rife] output pts=0.050000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (2%) A-V: -0.015
+AV: 00:00:00 / 00:00:01 (3%) A-V: -0.013
+[iive-rife] output pts=0.066666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (3%) A-V: -0.013
+AV: 00:00:00 / 00:00:01 (5%) A-V: -0.012
+[iive-rife] output pts=0.083333333 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (5%) A-V: -0.012
+AV: 00:00:00 / 00:00:01 (7%) A-V: -0.011
+[iive-rife] output pts=0.100000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (7%) A-V: -0.011
+AV: 00:00:00 / 00:00:01 (8%) A-V: -0.010
+[iive-rife] output pts=0.116666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (8%) A-V: -0.010
+AV: 00:00:00 / 00:00:01 (10%) A-V: -0.009
+[iive-rife] output pts=0.133333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (10%) A-V: -0.009
+AV: 00:00:00 / 00:00:01 (12%) A-V: -0.008
+[iive-rife] output pts=0.150000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (12%) A-V: -0.008
+AV: 00:00:00 / 00:00:01 (13%) A-V: -0.007
+[iive-rife] output pts=0.166666667 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (13%) A-V: -0.007
+AV: 00:00:00 / 00:00:01 (15%) A-V: -0.002
+[iive-rife] output pts=0.183333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (15%) A-V: -0.002
+AV: 00:00:00 / 00:00:01 (17%) A-V: -0.006
+[iive-rife] output pts=0.200000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (17%) A-V: -0.006
+AV: 00:00:00 / 00:00:01 (18%) A-V: -0.005
+[iive-rife] output pts=0.216666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (18%) A-V: -0.005
+AV: 00:00:00 / 00:00:01 (20%) A-V: -0.005
+[iive-rife] output pts=0.233333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (20%) A-V: -0.005
+AV: 00:00:00 / 00:00:01 (22%) A-V: -0.004
+[iive-rife] output pts=0.250000000 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (22%) A-V: -0.004
+AV: 00:00:00 / 00:00:01 (23%) A-V: -0.004
+[iive-rife] output pts=0.266666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (23%) A-V: -0.004
+AV: 00:00:00 / 00:00:01 (25%) A-V: -0.003
+[iive-rife] output pts=0.283333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (25%) A-V: -0.003
+AV: 00:00:00 / 00:00:01 (27%) A-V: -0.003
+[iive-rife] output pts=0.300000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (27%) A-V: -0.003
+AV: 00:00:00 / 00:00:01 (28%) A-V: -0.003
+[iive-rife] output pts=0.316666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (28%) A-V: -0.003
+AV: 00:00:00 / 00:00:01 (30%) A-V: -0.003
+[iive-rife] output pts=0.333333333 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (30%) A-V: -0.003
+AV: 00:00:00 / 00:00:01 (32%) A-V: -0.002
+[iive-rife] output pts=0.350000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (32%) A-V: -0.002
+AV: 00:00:00 / 00:00:01 (33%) A-V: -0.002
+[iive-rife] output pts=0.366666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (33%) A-V: -0.002
+AV: 00:00:00 / 00:00:01 (35%) A-V: -0.002
+[iive-rife] output pts=0.383333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (35%) A-V: -0.002
+AV: 00:00:00 / 00:00:01 (37%) A-V: -0.002
+[iive-rife] output pts=0.400000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (37%) A-V: -0.002
+AV: 00:00:00 / 00:00:01 (38%) A-V: -0.001
+[iive-rife] output pts=0.416666667 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (38%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (40%) A-V: -0.001
+[iive-rife] output pts=0.433333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (40%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (42%) A-V: -0.001
+[iive-rife] output pts=0.450000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (42%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (43%) A-V: -0.001
+[iive-rife] output pts=0.466666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (43%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (45%) A-V: -0.001
+[iive-rife] output pts=0.483333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (45%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (47%) A-V: -0.001
+[iive-rife] output pts=0.500000000 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (47%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (48%) A-V: -0.001
+[iive-rife] output pts=0.516666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (48%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (50%) A-V: -0.001
+[iive-rife] output pts=0.533333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (50%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (52%) A-V: -0.001
+[iive-rife] output pts=0.550000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (52%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (53%) A-V:  0.000
+[iive-rife] output pts=0.566666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (53%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (55%) A-V: -0.001
+[iive-rife] output pts=0.583333333 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (55%) A-V: -0.001
+AV: 00:00:00 / 00:00:01 (57%) A-V: -0.000
+[iive-rife] output pts=0.600000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (57%) A-V: -0.000
+AV: 00:00:00 / 00:00:01 (58%) A-V: -0.000
+[iive-rife] output pts=0.616666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (58%) A-V: -0.000
+AV: 00:00:00 / 00:00:01 (60%) A-V: -0.000
+AV: 00:00:00 / 00:00:01 (62%) A-V: -0.000
+[iive-rife] output pts=0.633333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (62%) A-V: -0.000
+AV: 00:00:00 / 00:00:01 (62%) A-V:  0.000
+[iive-rife] output pts=0.650000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (62%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (63%) A-V:  0.000
+[iive-rife] output pts=0.666666667 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (63%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (65%) A-V:  0.000
+[iive-rife] output pts=0.683333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (65%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (67%) A-V:  0.000
+[iive-rife] output pts=0.700000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (67%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (68%) A-V:  0.000
+[iive-rife] output pts=0.716666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (68%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (70%) A-V:  0.000
+[iive-rife] output pts=0.733333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (70%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (72%) A-V:  0.000
+[iive-rife] output pts=0.750000000 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (72%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (73%) A-V:  0.000
+[iive-rife] output pts=0.766666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (73%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (75%) A-V:  0.000
+[iive-rife] output pts=0.783333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (75%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (77%) A-V:  0.000
+[iive-rife] output pts=0.800000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (77%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (78%) A-V:  0.000
+[iive-rife] output pts=0.816666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (78%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (80%) A-V:  0.000
+[iive-rife] output pts=0.833333333 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (80%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (82%) A-V:  0.000
+[iive-rife] output pts=0.850000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (82%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (83%) A-V:  0.000
+[iive-rife] output pts=0.866666667 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (83%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (85%) A-V:  0.000
+[iive-rife] output pts=0.883333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (85%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (87%) A-V:  0.000
+[iive-rife] output pts=0.900000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (87%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (88%) A-V:  0.000
+[iive-rife] output pts=0.916666667 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (88%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (90%) A-V:  0.000
+[iive-rife] output pts=0.933333333 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (90%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (92%) A-V:  0.000
+[iive-rife] output pts=0.950000000 synthesized=1 generation=0
+AV: 00:00:00 / 00:00:01 (92%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (93%) A-V:  0.000
+[iive-rife] output pts=0.966666667 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (93%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (95%) A-V:  0.000
+[iive-rife] output pts=0.983333333 synthesized=0 generation=0
+AV: 00:00:00 / 00:00:01 (95%) A-V:  0.000
+AV: 00:00:00 / 00:00:01 (97%) A-V:  0.000
+[iive-rife] RIFE totals: emitted=60 synthesized=46 stale_jobs=0
+AV: 00:00:00 / 00:00:01 (97%) A-V:  0.000
+[iive-rife] dropping request due to pin disconnect
+AV: 00:00:00 / 00:00:01 (97%) A-V:  0.000
+[iive-rife] dropping request due to pin disconnect
+AV: 00:00:00 / 00:00:01 (97%) A-V:  0.000
+Exiting... (End of file)

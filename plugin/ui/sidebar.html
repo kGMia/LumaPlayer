@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'"><title>Enhancement</title><link rel="stylesheet" href="style.css"><body>
+<header><h1>Video Enhancer</h1><span class="badge">PREVIEW 0.2</span></header>
+<p class="intro">Natural video · Apple Silicon</p>
+<div id="runtime" class="status runtime" data-tone="neutral">
+<div class="status-heading" role="status" aria-live="polite" aria-atomic="true"><span class="status-dot" aria-hidden="true"></span><strong id="runtime-label">Connecting</strong></div>
+<p id="runtime-detail">Waiting for player status…</p><span id="heartbeat" class="hint">No status received</span>
+<div class="feature-status" id="sr-status" data-tone="neutral"><div><span>Super Resolution</span><strong id="sr-label">Unknown</strong></div><p id="sr-detail">Waiting for player status…</p></div>
+<div class="feature-status" id="fi-status" data-tone="neutral"><div><span>Frame Interpolation</span><strong id="fi-label">Unknown</strong></div><p id="fi-detail">Waiting for player status…</p></div>
+<div class="feature-status" id="performance-status" data-tone="neutral"><div><span>Performance Guard</span><strong id="performance-label">Unknown</strong></div><p id="performance-detail">Waiting for player status…</p></div>
+</div>
+<section><h2>Enhancement</h2>
+<label class="switch">Master Switch <input id="master" type="checkbox" role="switch"></label>
+<label class="switch">Super Resolution <input id="srEnabled" type="checkbox" role="switch"></label>
+<label>Super Resolution Mode<select id="sr"><option value="off">Off</option><option value="auto">Auto</option><option value="fsrcnnx">FSRCNNX · Neural ×2</option><option value="ravu">RAVU Lite · ×2</option><option value="cas">CAS · Sharpening</option></select></label>
+<label class="switch">Frame Interpolation <input id="fiEnabled" type="checkbox" role="switch" disabled></label>
+<label>Interpolation Mode<select id="fi" disabled><option value="off">Unavailable in stock IINA</option><option value="rife" disabled>RIFE AI · Native adapter required</option></select></label>
+<label>Target FPS<select id="fps" disabled><option value="48">48 fps</option><option value="60">60 fps</option></select></label>
+<p class="hint">CPU motion compensation was removed after severe playback stalls. Real-time RIFE needs a native player integration; these controls remain unavailable.</p>
+<label>Quality Preset<select id="preset"><option value="performance">Performance</option><option value="balanced">Balanced</option><option value="quality">Quality</option></select></label>
+<p class="hint">Auto: Performance uses CAS; Balanced uses FSRCNNX 8; Quality uses FSRCNNX 16. No scaling when the source already fills the output.</p>
+<label class="switch">Auto Performance Management <input id="autoPerformance" type="checkbox" role="switch"></label>
+</section>
+<details><summary>Advanced</summary>
+<label>Super Resolution Model<select id="srModel"><option value="preset">Follow Quality Preset</option><option value="fsrcnnx8">FSRCNNX 8 · Lower cost</option><option value="fsrcnnx16">FSRCNNX 16 · Higher capacity</option></select></label>
+<p class="hint">Applies when FSRCNNX is selected by the mode or Auto. The 16-channel model costs more GPU time; higher quality is content-dependent. The status above shows the actual model.</p>
+<label>Upscaling Strength <input id="strength" type="range" min="0" max="1" step="0.1"></label><p class="hint">Strength controls CAS only. Neural weights are fixed.</p>
+<label>RIFE Model<select disabled><option>RIFE v4.26 · separate native host only</option></select></label>
+<p class="hint">GPU processing: mpv GLSL fragment shaders. RIFE fast / balanced / hq are available in the separate native host, not this player.</p>
+<p class="hint">Scene cut handling: native RIFE prototype only. HDR and unknown transfer functions are bypassed. Performance fallback is latched until Retry or the next file.</p>
+</details>
+<section><h2>Performance</h2><dl id="metrics"></dl><p class="hint">Filtered FPS is mpv’s estimate, not measured display presentation FPS. Unavailable measurements are shown as N/A.</p></section>
+<p id="fault" role="alert" hidden></p>
+<button id="retry">Retry / Reset Performance Fallback</button>
+<footer>Turn Master Switch off before uninstalling.<br>GPL-3.0-or-later · No warranty</footer><script src="sidebar.js"></script></body></html>

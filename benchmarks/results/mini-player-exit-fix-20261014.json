@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-14",
+  "root_cause": "Unconditional applicationShouldTerminateAfterLastWindowClosed returned true after hiding the main window while an NSPanel was visible",
+  "pre_fix_reproduced_without_media": true,
+  "appkit_termination_breakpoint_hit": true,
+  "build_and_launch_passed": true,
+  "build_log": "/var/folders/08/zt2t3jxd5w1_nbvg_8_96c800000gn/T/ActionArtifacts/default/RunProject/RunProject-Log-20261014-211141.txt",
+  "post_fix_empty_media_mini_round_trips": 2,
+  "restore_button_verified": true,
+  "mini_close_button_restore_verified": true,
+  "media_playback_transition_verified": false,
+  "signature_verified": true,
+  "artifact": "build/PersonalTeam/IIVE Player.app"
+}

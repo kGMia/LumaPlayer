@@ -1,0 +1,58 @@
+{
+  "hwdec": {
+    "data": [
+      "auto"
+    ],
+    "request_id": 1,
+    "error": "success"
+  },
+  "hwdec-current": {
+    "data": "no",
+    "request_id": 1,
+    "error": "success"
+  },
+  "vf": {
+    "data": [],
+    "request_id": 1,
+    "error": "success"
+  },
+  "estimated-vf-fps": {
+    "data": 24.0,
+    "request_id": 1,
+    "error": "success"
+  },
+  "user-data/iive-status": {
+    "data": {
+      "loaded": 1,
+      "motionVerified": 0,
+      "fault": "Motion compensation disabled: sustained playback overload.",
+      "sr": "off",
+      "video": {
+        "fps": 24,
+        "gamma": "bt.1886",
+        "h": 720,
+        "primaries": "bt.709",
+        "outW": 1280,
+        "outH": 720,
+        "pixel": "yuv420p",
+        "w": 1280,
+        "dh": 720,
+        "dw": 1280
+      },
+      "motion": 0,
+      "srVerified": 0
+    },
+    "request_id": 1,
+    "error": "success"
+  },
+  "avsync": {
+    "data": 4e-06,
+    "request_id": 1,
+    "error": "success"
+  },
+  "frame-drop-count": {
+    "data": 0,
+    "request_id": 1,
+    "error": "success"
+  }
+}

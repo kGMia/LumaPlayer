@@ -1,0 +1,18 @@
+{
+  "scope": "short real-player IPC controls check; not UI or performance acceptance",
+  "checks": {
+    "codec_and_packet_bitrate": true,
+    "frame_step": {
+      "before": 2.0,
+      "after": 2.041667
+    },
+    "mute": true,
+    "timing_and_subtitle_size": true,
+    "repeat_properties": true,
+    "rendered_screenshot": "player-controls-20261014-141335.png",
+    "append_next_previous_remove": true
+  },
+  "video_bitrate_bps": 7672827,
+  "video_codec": "h264",
+  "passed": true
+}
