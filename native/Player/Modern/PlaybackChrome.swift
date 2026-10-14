@@ -6,15 +6,17 @@ import AVFoundation
 /// Do not attach `.interactive()` to the container background itself, otherwise clicking the
 /// transport panel or dragging sliders triggers a container-wide press state that recolors child controls.
 struct PlaybackGlass: ViewModifier {
+    var cornerRadius: CGFloat = 24
     @Environment(\.accessibilityReduceTransparency) private var opaque
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if opaque {
-            content.background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 24))
+            content.background(Color(nsColor: .windowBackgroundColor), in: shape)
         } else {
             // A dark scrim keeps controls readable even over saturated video;
             // OpenGL video does not always participate in system backdrop blur.
-            content.background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+            content.background(.black.opacity(0.55), in: shape)
+                .glassEffect(.regular, in: shape)
         }
     }
 }
@@ -26,6 +28,66 @@ private struct TransportButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .opacity(configuration.isPressed ? 0.65 : 1.0)
             .contentShape(Rectangle())
+    }
+}
+
+/// Minimalist QuickTime-style clean white capsule slider used for volume control.
+struct CleanWhiteVolumeBar: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    @State private var isHovering = false
+    @State private var isDragging = false
+
+    private var normalized: CGFloat {
+        let span = max(0.0001, range.upperBound - range.lowerBound)
+        return CGFloat(min(1, max(0, (value - range.lowerBound) / span)))
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = max(1, proxy.size.width)
+            let h = proxy.size.height
+            let barH: CGFloat = (isHovering || isDragging) ? 6 : 4
+            let fillW = max(barH, w * normalized)
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(.white.opacity(0.24))
+                    .frame(height: barH)
+                Capsule(style: .continuous)
+                    .fill(.white.opacity(0.95))
+                    .frame(width: normalized > 0.001 ? fillW : 0, height: barH)
+                if isHovering || isDragging {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 10, height: 10)
+                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                        .offset(x: min(max(0, w * normalized - 5), max(0, w - 10)))
+                }
+            }
+            .frame(width: w, height: h)
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    if !isHovering { isHovering = true }
+                case .ended:
+                    if isHovering { isHovering = false }
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        if !isDragging { isDragging = true }
+                        let ratio = min(1, max(0, Double(gesture.location.x / w)))
+                        value = range.lowerBound + ratio * (range.upperBound - range.lowerBound)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                    }
+            )
+            .animation(.easeOut(duration: 0.12), value: isHovering || isDragging)
+        }
+        .frame(width: 72, height: 18)
     }
 }
 
@@ -311,8 +373,11 @@ struct FloatingTransport: View {
                 Button { model.toggleMute() } label: {
                     Image(systemName: model.muted || model.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2").font(.callout)
                 }.accessibilityLabel(model.muted ? "Unmute" : "Mute").help("Mute (M)")
-                Slider(value: Binding(get: { model.volume }, set: { model.setVolume($0) }), in: 0...100)
-                    .frame(width: 72).accessibilityLabel("Volume")
+                CleanWhiteVolumeBar(
+                    value: Binding(get: { model.volume }, set: { model.setVolume($0) }),
+                    range: 0...100
+                )
+                .accessibilityLabel("Volume")
                 Button { model.showSidebar("queue") } label: {
                     Image(systemName: "list.bullet")
                         .opacity(queueActive ? 1.0 : 0.78)
@@ -343,12 +408,12 @@ struct FloatingTransport: View {
             .focusEffectDisabled()
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
-        .modifier(PlaybackGlass())
+        .modifier(PlaybackGlass(cornerRadius: 24))
     }
 }
 
 /// Preview locally while dragging; send one exact seek on release. Shared by both window modes.
-/// Observes `PlayerTimelineState` independently so 4 Hz time updates only redraw the timeline bar.
+/// Uses a clean QuickTime-style minimalist white capsule bar and observes `PlayerTimelineState` independently.
 struct PlaybackTimeline: View {
     @ObservedObject var model: PlayerModel
     @ObservedObject var timeline: PlayerTimelineState
@@ -358,9 +423,12 @@ struct PlaybackTimeline: View {
     @State private var hoverTime: Double?
     @State private var hoverRatio = CGFloat(0)
     @State private var sliderWidth = CGFloat(0)
+    @State private var isHoveringTrack = false
     @State private var previewImage: CGImage?
     private var limit: Double { timeline.duration.isFinite ? max(1, timeline.duration) : 1 }
     private func bounded(_ value: Double) -> Double { value.isFinite ? min(limit, max(0, value)) : 0 }
+    private var activeValue: Double { bounded(preview ?? timeline.position) }
+    private var progressRatio: CGFloat { CGFloat(min(1, max(0, activeValue / limit))) }
     private var activePreviewTime: Double? {
         guard model.showTimelinePreview, model.loaded, timeline.duration > 0 else { return nil }
         return preview ?? hoverTime
@@ -370,43 +438,84 @@ struct PlaybackTimeline: View {
         return "\(model.path)#\(Int((target * 2).rounded()))"
     }
     var body: some View {
+        let interactive = model.loaded && timeline.duration > 0
+        let barHeight: CGFloat = (isHoveringTrack || scrubbing) ? (compact ? 5.5 : 6.5) : (compact ? 3.5 : 4.5)
+        let knobSize: CGFloat = compact ? 9 : 11
         HStack(spacing: compact ? 6 : 10) {
-            Text(time(preview ?? timeline.position))
+            Text(time(activeValue))
                 .frame(minWidth: compact ? 34 : 50, alignment: .trailing)
-            Slider(value: Binding(get: { bounded(preview ?? timeline.position) }, set: { preview = bounded($0) }), in: 0...limit) { editing in
-                // Keep the preview optional: touching the thumb without moving must not seek.
-                if editing { scrubbing = true }
-                else if scrubbing {
-                    scrubbing = false
-                    if let preview { model.seek(bounded(preview)) }
-                    preview = nil
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(.white.opacity(0.24))
+                    .frame(height: barHeight)
+
+                if let hoverTime, !scrubbing, isHoveringTrack {
+                    let hRatio = CGFloat(min(1, max(0, hoverTime / limit)))
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.18))
+                        .frame(width: max(barHeight, sliderWidth * hRatio), height: barHeight)
+                }
+
+                Capsule(style: .continuous)
+                    .fill(.white)
+                    .frame(width: progressRatio > 0.001 ? max(barHeight, sliderWidth * progressRatio) : 0, height: barHeight)
+
+                if (isHoveringTrack || scrubbing) && interactive {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: knobSize, height: knobSize)
+                        .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                        .offset(x: min(max(0, sliderWidth * progressRatio - knobSize * 0.5), max(0, sliderWidth - knobSize)))
                 }
             }
-            .controlSize(compact ? .small : .regular)
-            .focusEffectDisabled()
+            .frame(maxWidth: .infinity)
+            .frame(height: compact ? 16 : 20)
+            .contentShape(Rectangle())
+            .animation(.easeOut(duration: 0.12), value: isHoveringTrack || scrubbing)
+            .accessibilityElement()
             .accessibilityLabel("Playback position")
-            .disabled(!model.loaded || timeline.duration <= 0)
+            .accessibilityValue("\(time(activeValue)) of \(time(timeline.duration))")
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { width in
                 if abs(sliderWidth - width) > 0.5 { sliderWidth = width }
             }
             .onContinuousHover { phase in
-                guard model.showTimelinePreview, model.loaded, timeline.duration > 0, sliderWidth > 16 else {
+                guard interactive, sliderWidth > 8 else {
+                    if isHoveringTrack { isHoveringTrack = false }
                     if hoverTime != nil { hoverTime = nil }
                     return
                 }
                 switch phase {
                 case .active(let location):
-                    let inset: CGFloat = 8
-                    let usable = max(1, sliderWidth - inset * 2)
-                    let ratio = min(1, max(0, (location.x - inset) / usable))
+                    if !isHoveringTrack { isHoveringTrack = true }
+                    let ratio = min(1, max(0, location.x / max(1, sliderWidth)))
                     hoverRatio = ratio
-                    hoverTime = bounded(Double(ratio) * limit)
+                    hoverTime = model.showTimelinePreview ? bounded(Double(ratio) * limit) : nil
                 case .ended:
+                    isHoveringTrack = false
                     hoverTime = nil
                 }
             }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        guard interactive, sliderWidth > 8 else { return }
+                        if !scrubbing { scrubbing = true }
+                        let ratio = min(1, max(0, gesture.location.x / max(1, sliderWidth)))
+                        hoverRatio = ratio
+                        preview = bounded(Double(ratio) * limit)
+                    }
+                    .onEnded { gesture in
+                        guard interactive else { return }
+                        let ratio = min(1, max(0, gesture.location.x / max(1, sliderWidth)))
+                        let finalTime = preview ?? bounded(Double(ratio) * limit)
+                        scrubbing = false
+                        preview = nil
+                        model.seek(bounded(finalTime))
+                    }
+            )
             .overlay(alignment: .topLeading) {
                 if let targetTime = activePreviewTime, sliderWidth > 16 {
                     let bubbleW: CGFloat = compact ? 132 : 172
@@ -419,13 +528,14 @@ struct PlaybackTimeline: View {
                         chapter: model.chapterTitle(at: targetTime),
                         compact: compact
                     )
-                    .offset(x: clampedX, y: compact ? -108 : -136)
+                    .offset(x: clampedX, y: compact ? -104 : -132)
                 }
             }
+
             if !compact { Text(time(timeline.duration)).frame(minWidth: 50, alignment: .leading) }
         }
         .font(.caption.monospacedDigit())
-        .foregroundStyle(.white.opacity(0.75))
+        .foregroundStyle(.white.opacity(0.82))
         .task(id: previewBucketKey) {
             guard let target = activePreviewTime, !model.path.isEmpty else { return }
             if let img = await TimelinePreviewGenerator.shared.thumbnail(for: model.path, at: target),
@@ -437,14 +547,16 @@ struct PlaybackTimeline: View {
             scrubbing = false
             preview = nil
             hoverTime = nil
+            isHoveringTrack = false
             previewImage = nil
         }
         .onDisappear {
             scrubbing = false
             preview = nil
             hoverTime = nil
+            isHoveringTrack = false
         }
-        .help("\(time(timeline.position)) / \(time(timeline.duration)) · Drag to seek")
+        .help("\(time(timeline.position)) / \(time(timeline.duration)) · Click or drag to seek")
     }
     private func time(_ value: Double) -> String {
         guard value.isFinite, value >= 0 else { return "--:--" }

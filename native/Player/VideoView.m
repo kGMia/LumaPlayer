@@ -5,6 +5,7 @@
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
 #include <stdatomic.h>
+#include <math.h>
 @interface VideoView () {
     mpv_render_context *_render;
     dispatch_queue_t _queue;
@@ -13,6 +14,9 @@
     atomic_bool _redraw;
     atomic_bool _windowTransition;
     atomic_uint_fast64_t _renders;
+    NSPoint _mouseDownPoint;
+    BOOL _mouseDragged;
+    dispatch_block_t _pendingSingleClick;
 }
 @end
 static void *resolveGL(void *ctx,const char *name){return dlsym(RTLD_DEFAULT,name);}
@@ -24,7 +28,55 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
     if(self){self.wantsBestResolutionOpenGLSurface=YES;_queue=dispatch_queue_create("org.iive.render",DISPATCH_QUEUE_SERIAL);}
     return self;
 }
-- (BOOL)mouseDownCanMoveWindow { return YES; }
+- (BOOL)mouseDownCanMoveWindow {
+    // Return NO so AppKit delivers mouseDown/mouseDragged/mouseUp to VideoView;
+    // window dragging is initiated explicitly in mouseDragged: after a 3pt threshold.
+    return NO;
+}
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    return YES;
+}
+- (void)cancelPendingSingleClick {
+    if(_pendingSingleClick) {
+        dispatch_block_cancel(_pendingSingleClick);
+        _pendingSingleClick=nil;
+    }
+}
+- (void)mouseDown:(NSEvent *)event {
+    _mouseDownPoint=event.locationInWindow;
+    _mouseDragged=NO;
+    if(event.clickCount>=2) {
+        [self cancelPendingSingleClick];
+    }
+}
+- (void)mouseDragged:(NSEvent *)event {
+    NSPoint cur=event.locationInWindow;
+    if(hypot(cur.x-_mouseDownPoint.x,cur.y-_mouseDownPoint.y)>3.0) {
+        _mouseDragged=YES;
+        [self cancelPendingSingleClick];
+        if(self.window && !(self.window.styleMask & NSWindowStyleMaskFullScreen)) {
+            [self.window performWindowDragWithEvent:event];
+        }
+    }
+}
+- (void)mouseUp:(NSEvent *)event {
+    if(_mouseDragged)return;
+    if(event.clickCount>=2) {
+        [self cancelPendingSingleClick];
+        if(self.onDoubleClick)self.onDoubleClick();
+    } else if(event.clickCount==1) {
+        [self cancelPendingSingleClick];
+        __weak VideoView *weakSelf=self;
+        dispatch_block_t block=dispatch_block_create(0,^{
+            VideoView *strongSelf=weakSelf;
+            if(!strongSelf)return;
+            strongSelf->_pendingSingleClick=nil;
+            if(strongSelf.onSingleClick)strongSelf.onSingleClick();
+        });
+        _pendingSingleClick=block;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.20*NSEC_PER_SEC)),dispatch_get_main_queue(),block);
+    }
+}
 - (BOOL)startRenderer:(mpv_handle *)mpv {
     [self.openGLContext setView:self];[self.openGLContext update];
     [self.openGLContext makeCurrentContext];GLint interval=1;[self.openGLContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
@@ -115,6 +167,7 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
     });
 }
 - (void)stopRenderer {
+    [self cancelPendingSingleClick];
     if(!_render)return;
     mpv_render_context_set_update_callback(_render,NULL,NULL);
     dispatch_source_cancel(_updates);

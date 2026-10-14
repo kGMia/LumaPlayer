@@ -8,6 +8,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface VideoView : NSOpenGLView
+@property (nonatomic, copy, nullable) void (^onSingleClick)(void);
+@property (nonatomic, copy, nullable) void (^onDoubleClick)(void);
 - (BOOL)startRenderer:(mpv_handle *)mpv;
 - (void)stopRenderer;
 - (uint64_t)renderCount;

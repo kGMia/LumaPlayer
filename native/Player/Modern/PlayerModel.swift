@@ -252,6 +252,8 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var subtitleID = "no"
     @Published var fallback = false
     weak var videoView: VideoView?
+    var onCanvasSingleClick: (() -> Void)?
+    var onMiniCanvasSingleClick: (() -> Void)?
     private var openedLaunchInput = false
     var session: MPVSession?
     private var lastPlan = ""
@@ -319,6 +321,18 @@ struct MediaTrack: Identifiable, Equatable {
             shutdown()
         }
         videoView = view
+        view.onSingleClick = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.miniPlayer { self.onMiniCanvasSingleClick?() }
+                else { self.onCanvasSingleClick?() }
+            }
+        }
+        view.onDoubleClick = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.handleDoubleClick()
+            }
+        }
         session = MPVSession(view: view)
         guard let session else { error = "Unable to initialize the playback renderer."; return }
         session.onSnapshot = { [weak self] value in

@@ -224,19 +224,15 @@ private struct MiniPlayerContent: View {
         ZStack {
             Color.black
             MiniVideoSurface(host: host)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activity.handleCanvasTap(
-                        onSingleTap: { toggleControls() },
-                        onDoubleTap: { model.windowModes.restore(model) }
-                    )
-                }
             MiniTransport(model: model, scrubbing: $scrubbing) { hovering in
                 if hoveringControls != hovering { hoveringControls = hovering }
                 reveal()
             }.opacity(controlsVisible ? 1 : 0)
                 .allowsHitTesting(controlsVisible).accessibilityHidden(!controlsVisible)
         }.ignoresSafeArea().environment(\.colorScheme, .dark)
+            .onAppear {
+                model.onMiniCanvasSingleClick = { toggleControls() }
+            }
             .onContinuousHover { phase in
                 if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
                     reveal()
@@ -318,15 +314,22 @@ struct MiniTransport: View {
                         .disabled(model.windowTransition)
                 }.onHover(perform: onControlHover)
                 Spacer()
-                VStack(spacing: 4) {
-                    Text(model.title).font(.caption2).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: 5) {
+                    Text(model.title)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 8) {
                         PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing, compact: true)
                         MiniGlassButton(symbol: model.muted ? "speaker.slash" : "speaker.wave.2",
                                         title: model.muted ? "Unmute" : "Mute", diameter: 28, symbolSize: 12) { model.toggleMute() }
                     }
-                }.padding(8).background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
-                    .onHover(perform: onControlHover)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .modifier(PlaybackGlass(cornerRadius: 16))
+                .onHover(perform: onControlHover)
             }
             // Separate circles, deliberately no shared glass capsule or merging container.
             HStack(spacing: 12) {
@@ -341,7 +344,7 @@ struct MiniTransport: View {
     }
 }
 
-/// Native macOS 27 Liquid Glass tab switcher with matched-geometry morphing capsule.
+/// Native macOS 27 Liquid Glass tab switcher with accent-colored matched-geometry morphing capsule.
 struct SidebarTabs: View {
     @ObservedObject var model: PlayerModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -368,7 +371,7 @@ struct SidebarTabs: View {
                                 .font(.system(size: 12, weight: selected ? .semibold : .medium))
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(selected ? .primary : .secondary)
+                        .foregroundStyle(selected ? Color.white : Color.white.opacity(0.74))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .padding(.horizontal, 8)
@@ -376,8 +379,8 @@ struct SidebarTabs: View {
                         .background {
                             if selected {
                                 Capsule()
-                                    .fill(.white.opacity(0.14))
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                    .fill(Color.accentColor.opacity(0.85))
+                                    .glassEffect(.regular.tint(.accentColor).interactive(), in: Capsule())
                                     .glassEffectID("sidebar-active-tab", in: glassNamespace)
                                     .glassEffectTransition(.matchedGeometry)
                             }
@@ -390,7 +393,8 @@ struct SidebarTabs: View {
                 }
             }
             .padding(4)
-            .glassEffect(.clear, in: Capsule())
+            .background(Color.white.opacity(0.06), in: Capsule())
+            .glassEffect(.regular, in: Capsule())
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -399,25 +403,44 @@ struct SidebarTabs: View {
 
 struct PlayerSidebar: View {
     @ObservedObject var model: PlayerModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        VStack(spacing: 0) {
-            SidebarTabs(model: model)
-            ZStack {
-                switch model.sidebarTab {
-                case "enhance":
-                    EnhancementInspector(model: model)
-                        .transition(.opacity)
-                case "info":
-                    Form { Section("Video Information") { VideoInformationRows(model: model) } }
-                        .formStyle(.grouped).scrollContentBackground(.hidden)
-                        .transition(.opacity)
-                default:
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(.white.opacity(0.10))
+                .frame(width: 1)
+            VStack(spacing: 0) {
+                SidebarTabs(model: model)
+                Divider().overlay(.white.opacity(0.08))
+                // Keep all 3 tab views alive in a persistent ZStack so switching tabs never
+                // tears down or recreates AppKit NSScrollView/NSTableView instances (eliminating white/black flashes).
+                ZStack {
                     QueueView(model: model)
-                        .transition(.opacity)
+                        .opacity(model.sidebarTab == "queue" ? 1 : 0)
+                        .allowsHitTesting(model.sidebarTab == "queue")
+                        .accessibilityHidden(model.sidebarTab != "queue")
+
+                    EnhancementInspector(model: model)
+                        .opacity(model.sidebarTab == "enhance" ? 1 : 0)
+                        .allowsHitTesting(model.sidebarTab == "enhance")
+                        .accessibilityHidden(model.sidebarTab != "enhance")
+
+                    Form {
+                        Section("Video Information") {
+                            VideoInformationRows(model: model)
+                        }
+                    }
+                    .formStyle(.grouped)
+                    .scrollContentBackground(.hidden)
+                    .foregroundStyle(.white)
+                    .opacity(model.sidebarTab == "info" ? 1 : 0)
+                    .allowsHitTesting(model.sidebarTab == "info")
+                    .accessibilityHidden(model.sidebarTab != "info")
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: model.sidebarTab)
-        }.background(.ultraThinMaterial)
+        }
+        .background(Color(white: 0.11, opacity: 0.94))
+        .background(.ultraThinMaterial)
+        .environment(\.colorScheme, .dark)
     }
 }

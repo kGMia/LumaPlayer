@@ -18,12 +18,12 @@ import Combine
             return false
         }
         let now = Date()
-        if now.timeIntervalSince(manuallyHiddenAt) < 0.4 {
+        if now.timeIntervalSince(manuallyHiddenAt) < 0.45 {
             return false
         }
         if let hiddenLocation {
             let distance = hypot(location.x - hiddenLocation.x, location.y - hiddenLocation.y)
-            if distance < 14 { return false }
+            if distance < 16 { return false }
         }
         self.hiddenLocation = nil
         return true
@@ -48,7 +48,7 @@ import Combine
             return
         }
         tapTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(210))
+            try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             self?.tapTask = nil
             onSingleTap()
@@ -86,13 +86,6 @@ struct PlayerView: View {
                 Color.black.ignoresSafeArea()
                 VideoSurface(model: model)
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        activity.handleCanvasTap(
-                            onSingleTap: { handleSingleClick() },
-                            onDoubleTap: { model.handleDoubleClick() }
-                        )
-                    }
                 if model.miniPlayer {
                     ContentUnavailableView {
                         Label("Playing in Mini Player", systemImage: "pip")
@@ -111,14 +104,13 @@ struct PlayerView: View {
                         Button("Open Video…") { model.openPanel() }.buttonStyle(.borderedProminent)
                     }.foregroundStyle(.white)
                 }
-                GlassEffectContainer(spacing: 20) {
-                    VStack {
-                        if model.showVideoInfo && model.loaded && !model.miniPlayer {
-                            HStack { VideoInformationHUD(model: model); Spacer(minLength: 0) }
-                        }
-                        Spacer()
-                        if model.loaded {
-                            FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
+                VStack {
+                    if model.showVideoInfo && model.loaded && !model.miniPlayer {
+                        HStack { VideoInformationHUD(model: model); Spacer(minLength: 0) }
+                    }
+                    Spacer()
+                    if model.loaded {
+                        FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
                             .frame(maxWidth: 780)
                             .onHover {
                                 if hoveringControls != $0 { hoveringControls = $0 }
@@ -127,15 +119,16 @@ struct PlayerView: View {
                             .opacity(controlsVisible ? 1 : 0)
                             .allowsHitTesting(controlsVisible)
                             .accessibilityHidden(!controlsVisible)
-                        }
-                    }.padding(model.miniPlayer ? 10 : 20)
-                }.environment(\.colorScheme, .dark)
+                    }
+                }
+                .padding(model.miniPlayer ? 10 : 20)
+                .environment(\.colorScheme, .dark)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if model.inspector && !model.fullScreen && !model.miniPlayer {
                 PlayerSidebar(model: model)
-                    .frame(width: 310)
+                    .frame(width: 316)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -143,6 +136,9 @@ struct PlayerView: View {
         .frame(minWidth: 580, minHeight: 340)
         .ignoresSafeArea(.container, edges: model.fullScreen ? .all : [])
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
+        .onAppear {
+            model.onCanvasSingleClick = { handleSingleClick() }
+        }
         .onContinuousHover { phase in
             if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
                 revealControls()
@@ -285,21 +281,29 @@ struct EnhancementInspector: View {
                 row("SR input", model.meta("iive-sr")["input_surface"] ?? "N/A")
                 row("Shared SR inputs", model.meta("iive-sr")["shared_inputs"] ?? "N/A")
                 row("A/V clock offset", model.number("avsync").map { String(format: "%.1f ms", $0 * 1000) } ?? "N/A")
-                Text("Latest job times include conversion and inference; they are not end-to-end playback latency.").font(.caption).foregroundStyle(.secondary)
+                Text("Latest job times include conversion and inference; they are not end-to-end playback latency.")
+                    .font(.caption).foregroundStyle(.white.opacity(0.72))
             }
             Section("Processing") {
-                Text("Interpolation → Super Resolution → Display").font(.callout)
-                Text("Apple effects: VideoToolbox. Native RIFE and FSRCNNX: FP16 Metal / MPSGraph. Compatible native stages share pooled NV12 IOSurfaces directly from VideoToolbox hardware decoding.").font(.caption).foregroundStyle(.secondary)
+                Text("Interpolation → Super Resolution → Display").font(.callout).foregroundStyle(.white)
+                Text("Apple effects: VideoToolbox. Native RIFE and FSRCNNX: FP16 Metal / MPSGraph. Compatible native stages share pooled NV12 IOSurfaces directly from VideoToolbox hardware decoding.")
+                    .font(.caption).foregroundStyle(.white.opacity(0.72))
             }
             if !model.error.isEmpty { Section("Playback Message") { Text(model.error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) } }
-        }.formStyle(.grouped).scrollContentBackground(.hidden)
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .foregroundStyle(.white)
     }
     private func status(_ value: String) -> some View {
         Label(value, systemImage: value.hasPrefix("Active") ? "checkmark.circle.fill" : value.hasPrefix("Warming") || value.hasPrefix("Verifying") ? "clock" : "circle")
-            .font(.caption).foregroundStyle(value.hasPrefix("Active") ? .green : .secondary)
+            .font(.caption).foregroundStyle(value.hasPrefix("Active") ? .green : .white.opacity(0.72))
             .accessibilityLabel(value)
     }
     private func row(_ title: String, _ value: String) -> some View {
-        LabeledContent(title) { Text(value).monospacedDigit().textSelection(.enabled) }.font(.caption)
+        LabeledContent(title) {
+            Text(value).foregroundStyle(.white.opacity(0.92)).monospacedDigit().textSelection(.enabled)
+        }
+        .font(.caption)
     }
 }
