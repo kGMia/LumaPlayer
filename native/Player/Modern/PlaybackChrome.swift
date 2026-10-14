@@ -518,7 +518,8 @@ struct PlaybackTimeline: View {
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { width in
-                if abs(sliderWidth - width) > 0.5 { sliderWidth = width }
+                let threshold: CGFloat = model.liveResizing ? 6.0 : 0.5
+                if abs(sliderWidth - width) > threshold { sliderWidth = width }
             }
             .onContinuousHover { phase in
                 guard interactive, sliderWidth > 8 else {

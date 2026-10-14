@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #import "VideoView.h"
+#import <QuartzCore/QuartzCore.h>
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #include <mpv/render_gl.h>
 #include <OpenGL/gl3.h>
@@ -13,7 +14,11 @@
     atomic_int _pixelWidth, _pixelHeight;
     atomic_bool _redraw;
     atomic_bool _windowTransition;
+    atomic_bool _inLiveResize;
+    atomic_bool _renderingFrame;
+    atomic_bool _swapIntervalUpdateNeeded;
     atomic_uint_fast64_t _renders;
+    CFTimeInterval _lastLiveReshapeTime;
     NSPoint _mouseDownPoint;
     BOOL _mouseDragged;
     dispatch_block_t _pendingSingleClick;
@@ -25,8 +30,17 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
 - (instancetype)initWithFrame:(NSRect)frame {
     NSOpenGLPixelFormatAttribute attrs[]={NSOpenGLPFAOpenGLProfile,NSOpenGLProfileVersion3_2Core,NSOpenGLPFAAccelerated,NSOpenGLPFADoubleBuffer,0};
     self=[super initWithFrame:frame pixelFormat:[[NSOpenGLPixelFormat alloc] initWithAttributes:attrs]];
-    if(self){self.wantsBestResolutionOpenGLSurface=YES;_queue=dispatch_queue_create("org.iive.render",DISPATCH_QUEUE_SERIAL);}
+    if(self){
+        self.wantsBestResolutionOpenGLSurface=YES;
+        self.wantsLayer=YES;
+        self.layerContentsRedrawPolicy=NSViewLayerContentsRedrawDuringViewResize;
+        self.layerContentsPlacement=NSViewLayerContentsPlacementScaleAxesIndependently;
+        _queue=dispatch_queue_create("org.iive.render",DISPATCH_QUEUE_SERIAL);
+    }
     return self;
+}
+- (BOOL)preservesContentDuringLiveResize {
+    return YES;
 }
 - (BOOL)mouseDownCanMoveWindow {
     // Return NO so AppKit delivers mouseDown/mouseDragged/mouseUp to VideoView;
@@ -112,13 +126,44 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
     mpv_render_context_set_update_callback(_render,update,(__bridge void *)_updates);
     [self reshape];return YES;
 }
+- (void)viewWillStartLiveResize {
+    [super viewWillStartLiveResize];
+    atomic_store(&_inLiveResize,true);
+    atomic_store(&_swapIntervalUpdateNeeded,true);
+    _lastLiveReshapeTime=0;
+}
+- (void)viewDidEndLiveResize {
+    [super viewDidEndLiveResize];
+    atomic_store(&_inLiveResize,false);
+    atomic_store(&_swapIntervalUpdateNeeded,true);
+    _lastLiveReshapeTime=0;
+    [self reshape];
+}
 - (void)reshape {
     // Fullscreen animates geometry repeatedly. Defer expensive drawable updates
     // until the transition ends, instead of waiting on the GPU from AppKit.
-    if(!atomic_load(&_windowTransition)) {
-        CGLContextObj gl=self.openGLContext.CGLContextObj;
-        if(gl)CGLLockContext(gl);[super reshape];if(gl)CGLUnlockContext(gl);
+    if(atomic_load(&_windowTransition)) {
+        [self updatePixelSize];
+        return;
     }
+    CGLContextObj gl=self.openGLContext.CGLContextObj;
+    if(atomic_load(&_inLiveResize)) {
+        CFTimeInterval now=CACurrentMediaTime();
+        // Throttle OpenGL drawable reallocation during live window dragging to ~30 Hz
+        // and skip if _queue is actively rendering so the main thread never stalls on CGLLockContext.
+        if(now - _lastLiveReshapeTime < 0.033 || atomic_load(&_renderingFrame)) {
+            return;
+        }
+        _lastLiveReshapeTime=now;
+        if(gl)CGLLockContext(gl);
+        [super reshape];
+        if(gl)CGLUnlockContext(gl);
+        [self updatePixelSize];
+        return;
+    }
+    if(gl)CGLLockContext(gl);
+    [super reshape];
+    if(gl)CGLUnlockContext(gl);
     [self updatePixelSize];
 }
 - (void)updatePixelSize {
@@ -129,17 +174,34 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
 - (void)drawRect:(NSRect)rect {atomic_store(&_redraw,true);if(_updates)dispatch_source_merge_data(_updates,1);}
 - (void)renderFrame {
     if(!_render || atomic_load(&_windowTransition))return;
+    atomic_store(&_renderingFrame,true);
     [self.openGLContext makeCurrentContext];
     CGLContextObj context=self.openGLContext.CGLContextObj;CGLLockContext(context);
+    if(atomic_exchange(&_swapIntervalUpdateNeeded,false)) {
+        // Disable VSync blocking during live window resize so flushBuffer never stalls
+        // the main thread's CGLLockContext in -[VideoView reshape].
+        GLint interval=atomic_load(&_inLiveResize)?0:1;
+        [self.openGLContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
+    }
     uint64_t flags=mpv_render_context_update(_render);
     if((flags&MPV_RENDER_UPDATE_FRAME)||atomic_exchange(&_redraw,false)) {
-        mpv_opengl_fbo fbo={.fbo=0,.w=atomic_load(&_pixelWidth),.h=atomic_load(&_pixelHeight)};int flip=1;
-        mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{0}};
+        mpv_opengl_fbo fbo={.fbo=0,.w=atomic_load(&_pixelWidth),.h=atomic_load(&_pixelHeight)};
+        int flip=1;
+        // Never block inside mpv_render_context_render waiting for target frame presentation time
+        // while holding CGLLockContext, otherwise main-thread reshape stalls during live resize.
+        int blockForTargetTime=0;
+        mpv_render_param params[]={
+            {MPV_RENDER_PARAM_OPENGL_FBO,&fbo},
+            {MPV_RENDER_PARAM_FLIP_Y,&flip},
+            {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,&blockForTargetTime},
+            {0}
+        };
         if(mpv_render_context_render(_render,params)>=0){
             [self.openGLContext flushBuffer];mpv_render_context_report_swap(_render);atomic_fetch_add(&_renders,1);
         }
     }
     CGLUnlockContext(context);[NSOpenGLContext clearCurrentContext];
+    atomic_store(&_renderingFrame,false);
 }
 - (NSSize)pixelSize { return NSMakeSize(atomic_load(&_pixelWidth),atomic_load(&_pixelHeight)); }
 - (uint64_t)renderCount{return atomic_load(&_renders);}

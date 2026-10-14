@@ -226,6 +226,7 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var quickSettings = false
     @Published var miniPlayer = false { didSet { menuState.sync(from: self) } }
     @Published var windowTransition = false
+    var liveResizing = false
     var enhancementPlanResumeAt = 0.0
     let windowModes = PlayerWindowModes()
     @Published var autoQueueFolder = UserDefaults.standard.bool(forKey: "autoQueueFolder") {
@@ -606,7 +607,7 @@ struct MediaTrack: Identifiable, Equatable {
         let now = ProcessInfo.processInfo.systemUptime
         let nextPath = value["path"] as? String ?? ""
         if nextPath != path { savePosition() }
-        telemetry.update(value, visible: showVideoInfo || inspector)
+        telemetry.update(value, visible: (showVideoInfo || inspector) && !liveResizing)
 
         let nextLoaded = !(value["video-params"] as? [String: Any] ?? [:]).isEmpty
         if loaded != nextLoaded { loaded = nextLoaded }
@@ -696,7 +697,7 @@ struct MediaTrack: Identifiable, Equatable {
             unverifiedSamples += 1
             if unverifiedSamples > 24 && !shaderFailed { shaderFailed = true }
         } else { unverifiedSamples = 0 }
-        if chromeTheme == "adaptive", loaded, !path.isEmpty, now - lastLumaSampleTime >= 2.0 {
+        if chromeTheme == "adaptive", loaded, !path.isEmpty, !liveResizing, now - lastLumaSampleTime >= 2.0 {
             lastLumaSampleTime = now
             let samplePath = path
             let sampleTime = nextPos
@@ -717,7 +718,7 @@ struct MediaTrack: Identifiable, Equatable {
         if now - lastSave > 10 { savePosition() }
     }
     func apply() {
-        guard session != nil, !windowTransition, ProcessInfo.processInfo.systemUptime >= enhancementPlanResumeAt else { return }
+        guard session != nil, !windowTransition, !liveResizing, ProcessInfo.processInfo.systemUptime >= enhancementPlanResumeAt else { return }
         applyDecoder()
         var filters: [String] = []; var shader: String?
         let disabled = !master || fallback

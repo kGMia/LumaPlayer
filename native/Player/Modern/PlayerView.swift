@@ -232,6 +232,19 @@ struct PlayerView: View {
                 model.attach(view)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willStartLiveResizeNotification)) { note in
+            if let window = note.object as? NSWindow, window === model.window || window === model.videoView?.window {
+                model.liveResizing = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification)) { note in
+            if let window = note.object as? NSWindow, window === model.window || window === model.videoView?.window {
+                model.liveResizing = false
+                model.enhancementPlanResumeAt = ProcessInfo.processInfo.systemUptime + 0.12
+                model.telemetry.flush()
+                model.apply()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
             if let window = note.object as? NSWindow, window === model.window { model.shutdown() }
         }
