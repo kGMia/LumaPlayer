@@ -21,6 +21,32 @@ struct PlaybackGlass: ViewModifier {
     }
 }
 
+/// Top-right transient Liquid Glass OSD toast for volume, speed, mute, frame step, and enhancement changes.
+struct OSDToastView: View {
+    @ObservedObject var osd: PlayerOSDState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        HStack(spacing: 8) {
+            if !osd.symbol.isEmpty {
+                Image(systemName: osd.symbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            Text(osd.text)
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .modifier(PlaybackGlass(cornerRadius: 18))
+        .opacity(osd.visible && !osd.text.isEmpty ? 1 : 0)
+        .scaleEffect(osd.visible && !osd.text.isEmpty ? 1.0 : 0.94)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: osd.visible)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!osd.visible)
+    }
+}
+
 /// Consistent white icon/label button style that never shifts tint when panel responder state changes.
 private struct TransportButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -199,24 +225,12 @@ private struct PlaybackSpeedMenu: View {
     }
 }
 
+/// Streamlined playback options menu; omits controls that already have dedicated buttons on the transport bar.
 private struct PlaybackOptionsMenu: View {
     @Environment(\.openSettings) private var openSettings
     @ObservedObject var model: PlayerModel
     var body: some View {
         Menu {
-            Button {
-                model.toggleMiniPlayer()
-            } label: {
-                Label(model.miniPlayer ? "Restore Player" : "Mini Player", systemImage: "pip")
-            }
-            Button {
-                model.showSidebar("queue")
-            } label: {
-                Label("Play Queue", systemImage: "list.bullet")
-            }
-            Toggle(isOn: $model.showTimelinePreview) {
-                Label("Timeline Hover Preview", systemImage: "photo.on.rectangle.angled")
-            }
             Button {
                 model.previousFile()
             } label: {
@@ -240,22 +254,6 @@ private struct PlaybackOptionsMenu: View {
                 }
             } label: {
                 Label("Chapters", systemImage: "bookmark")
-            }
-
-            Menu {
-                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
-                    Button {
-                        model.setSpeed(value)
-                    } label: {
-                        if abs(model.speed - value) < 0.01 {
-                            Label("\(value.formatted())×", systemImage: "checkmark")
-                        } else {
-                            Text("\(value.formatted())×")
-                        }
-                    }
-                }
-            } label: {
-                Label("Speed", systemImage: "speedometer")
             }
 
             Picker(selection: $model.repeatMode) {
@@ -317,6 +315,10 @@ private struct PlaybackOptionsMenu: View {
 
             Divider()
 
+            Toggle(isOn: $model.showTimelinePreview) {
+                Label("Timeline Hover Preview", systemImage: "photo.on.rectangle.angled")
+            }
+
             Button {
                 model.stepFrame()
             } label: {
@@ -374,7 +376,7 @@ struct FloatingTransport: View {
                     Image(systemName: model.muted || model.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2").font(.callout)
                 }.accessibilityLabel(model.muted ? "Unmute" : "Mute").help("Mute (M)")
                 CleanWhiteVolumeBar(
-                    value: Binding(get: { model.volume }, set: { model.setVolume($0) }),
+                    value: Binding(get: { model.volume }, set: { model.setVolume($0, showOSD: true) }),
                     range: 0...100
                 )
                 .accessibilityLabel("Volume")

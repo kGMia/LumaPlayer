@@ -92,10 +92,31 @@ struct MediaTrack: Identifiable, Equatable {
     }
 }
 
+/// Lightweight transient OSD status toast state (e.g. Volume, Speed, Mute, Enhancement toggle).
+@MainActor final class PlayerOSDState: ObservableObject {
+    @Published var symbol = ""
+    @Published var text = ""
+    @Published var visible = false
+    private var dismissTask: Task<Void, Never>?
+
+    func show(_ text: String, symbol: String) {
+        self.symbol = symbol
+        self.text = text
+        if !visible { visible = true }
+        dismissTask?.cancel()
+        dismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(1250))
+            guard !Task.isCancelled else { return }
+            self?.visible = false
+        }
+    }
+}
+
 @MainActor final class PlayerModel: ObservableObject {
     let menuState = PlayerMenuState()
     let timeline = PlayerTimelineState()
     let telemetry = PlayerTelemetryState()
+    let osd = PlayerOSDState()
 
     @Published var title = "IIVE Player"
     @Published var path = "" { didSet { menuState.sync(from: self) } }
@@ -110,7 +131,7 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var queueIndex = -1 { didSet { menuState.sync(from: self) } }
     @Published var volume = 50.0
     @Published var speed = 1.0
-    @Published var master = true { didSet { if preferencesReady { configure(); menuState.sync(from: self) } } }
+    @Published var master = true { didSet { if preferencesReady { configure(); menuState.sync(from: self); osd.show(master ? "Enhancement On" : "Enhancement Off", symbol: "sparkles") } } }
     @Published var sr: String { didSet { if preferencesReady { configure() } } }
     @Published var fi: String { didSet { if preferencesReady { configure() } } }
     @Published var tier: String { didSet { if preferencesReady { configure() } } }
@@ -333,6 +354,13 @@ struct MediaTrack: Identifiable, Equatable {
                 self?.handleDoubleClick()
             }
         }
+        view.onScrollVolume = { [weak self] delta in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let next = min(100, max(0, self.volume + delta))
+                self.setVolume(next, showOSD: true)
+            }
+        }
         session = MPVSession(view: view)
         guard let session else { error = "Unable to initialize the playback renderer."; return }
         session.onSnapshot = { [weak self] value in
@@ -400,16 +428,22 @@ struct MediaTrack: Identifiable, Equatable {
     func seek(_ value: Double, relative: Bool = false) {
         settledSamples = 0; command(["seek", String(value), relative ? "relative" : "absolute+exact"])
     }
-    func setVolume(_ value: Double) {
+    func setVolume(_ value: Double, showOSD: Bool = false) {
+        let clamped = min(100, max(0, value))
         volumeAdjustedAt = ProcessInfo.processInfo.systemUptime
-        if abs(volume - value) > 0.001 { volume = value }
-        defaults.set(value, forKey: "volume")
-        if muted && value > 0 { command(["set", "mute", "no"]) }
-        command(["set", "volume", String(value)])
+        if abs(volume - clamped) > 0.001 { volume = clamped }
+        defaults.set(clamped, forKey: "volume")
+        if muted && clamped > 0 { command(["set", "mute", "no"]) }
+        command(["set", "volume", String(clamped)])
+        if showOSD {
+            let icon = clamped <= 0.5 ? "speaker.slash.fill" : clamped < 35 ? "speaker.wave.1.fill" : clamped < 70 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
+            osd.show("Volume \(Int(clamped.rounded()))%", symbol: icon)
+        }
     }
     func setSpeed(_ value: Double) {
         if speed != value { speed = value }
         command(["set", "speed", String(value)])
+        osd.show("Speed \(value.formatted())×", symbol: "speedometer")
     }
     func selectTrack(_ type: String, _ id: String) { command(["set", type, id]) }
     func retry() {

@@ -218,7 +218,7 @@ private struct MiniPlayerContent: View {
     @State private var scrubbing = false
     @State private var controlsVisible = true
     @State private var hoveringControls = false
-    @State private var activity = ActivityTracker()
+    @StateObject private var activity = ActivityTracker()
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     var body: some View {
         ZStack {
@@ -226,30 +226,43 @@ private struct MiniPlayerContent: View {
             MiniVideoSurface(host: host)
             MiniTransport(model: model, scrubbing: $scrubbing) { hovering in
                 if hoveringControls != hovering { hoveringControls = hovering }
-                reveal()
+                if hovering { activity.last = Date() }
             }.opacity(controlsVisible ? 1 : 0)
                 .allowsHitTesting(controlsVisible).accessibilityHidden(!controlsVisible)
-        }.ignoresSafeArea().environment(\.colorScheme, .dark)
-            .onAppear {
-                model.onMiniCanvasSingleClick = { toggleControls() }
+            VStack {
+                OSDToastView(osd: model.osd)
+                    .padding(.top, 8)
+                Spacer(minLength: 0)
             }
-            .onContinuousHover { phase in
-                if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
+        }
+        .ignoresSafeArea()
+        .environment(\.colorScheme, .dark)
+        .onAppear {
+            model.onMiniCanvasSingleClick = { toggleControls() }
+        }
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                let height = max(host.bounds.height, 1)
+                if activity.shouldRevealOnHover(at: location, canvasHeight: height, controlsVisible: controlsVisible) {
                     reveal()
                 }
+            case .ended:
+                activity.resetHover()
             }
-            .onChange(of: model.paused) { reveal() }
-            .onChange(of: model.path) { reveal() }
-            .onChange(of: model.autoHideControls) { reveal() }
-            .onReceive(timer) { now in
-                if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
-                }
+        }
+        .onChange(of: model.paused) { reveal() }
+        .onChange(of: model.path) { reveal() }
+        .onChange(of: model.autoHideControls) { reveal() }
+        .onReceive(timer) { now in
+            if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
             }
-            .onExitCommand { model.windowModes.restore(model) }
-            .dropDestination(for: URL.self) { urls, _ in
-                guard !urls.isEmpty else { return false }; model.openFiles(urls); return true
-            }
+        }
+        .onExitCommand { model.windowModes.restore(model) }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard !urls.isEmpty else { return false }; model.openFiles(urls); return true
+        }
     }
     private func reveal() {
         activity.last = Date()
@@ -314,20 +327,13 @@ struct MiniTransport: View {
                         .disabled(model.windowTransition)
                 }.onHover(perform: onControlHover)
                 Spacer()
-                VStack(spacing: 5) {
-                    Text(model.title)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 8) {
-                        PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing, compact: true)
-                        MiniGlassButton(symbol: model.muted ? "speaker.slash" : "speaker.wave.2",
-                                        title: model.muted ? "Unmute" : "Mute", diameter: 28, symbolSize: 12) { model.toggleMute() }
-                    }
+                HStack(spacing: 8) {
+                    PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing, compact: true)
+                    MiniGlassButton(symbol: model.muted ? "speaker.slash" : "speaker.wave.2",
+                                    title: model.muted ? "Unmute" : "Mute", diameter: 26, symbolSize: 11) { model.toggleMute() }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .modifier(PlaybackGlass(cornerRadius: 16))
                 .onHover(perform: onControlHover)
             }
@@ -404,43 +410,44 @@ struct SidebarTabs: View {
 struct PlayerSidebar: View {
     @ObservedObject var model: PlayerModel
     var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(.white.opacity(0.10))
-                .frame(width: 1)
-            VStack(spacing: 0) {
-                SidebarTabs(model: model)
-                Divider().overlay(.white.opacity(0.08))
-                // Keep all 3 tab views alive in a persistent ZStack so switching tabs never
-                // tears down or recreates AppKit NSScrollView/NSTableView instances (eliminating white/black flashes).
-                ZStack {
-                    QueueView(model: model)
-                        .opacity(model.sidebarTab == "queue" ? 1 : 0)
-                        .allowsHitTesting(model.sidebarTab == "queue")
-                        .accessibilityHidden(model.sidebarTab != "queue")
+        VStack(spacing: 0) {
+            SidebarTabs(model: model)
+            Divider().overlay(.white.opacity(0.08))
+            // Keep all 3 tab views alive in a persistent ZStack so switching tabs never
+            // tears down or recreates AppKit NSScrollView/NSTableView instances (eliminating white/black flashes).
+            ZStack {
+                QueueView(model: model)
+                    .opacity(model.sidebarTab == "queue" ? 1 : 0)
+                    .allowsHitTesting(model.sidebarTab == "queue")
+                    .accessibilityHidden(model.sidebarTab != "queue")
 
-                    EnhancementInspector(model: model)
-                        .opacity(model.sidebarTab == "enhance" ? 1 : 0)
-                        .allowsHitTesting(model.sidebarTab == "enhance")
-                        .accessibilityHidden(model.sidebarTab != "enhance")
+                EnhancementInspector(model: model)
+                    .opacity(model.sidebarTab == "enhance" ? 1 : 0)
+                    .allowsHitTesting(model.sidebarTab == "enhance")
+                    .accessibilityHidden(model.sidebarTab != "enhance")
 
-                    Form {
-                        Section("Video Information") {
-                            VideoInformationRows(model: model)
-                        }
+                Form {
+                    Section("Video Information") {
+                        VideoInformationRows(model: model)
                     }
-                    .formStyle(.grouped)
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(.white)
-                    .opacity(model.sidebarTab == "info" ? 1 : 0)
-                    .allowsHitTesting(model.sidebarTab == "info")
-                    .accessibilityHidden(model.sidebarTab != "info")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .foregroundStyle(.white)
+                .opacity(model.sidebarTab == "info" ? 1 : 0)
+                .allowsHitTesting(model.sidebarTab == "info")
+                .accessibilityHidden(model.sidebarTab != "info")
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(white: 0.11, opacity: 0.94))
+        .background(Color(white: 0.11, opacity: 0.90))
         .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.45), radius: 18, x: -4, y: 6)
         .environment(\.colorScheme, .dark)
     }
 }

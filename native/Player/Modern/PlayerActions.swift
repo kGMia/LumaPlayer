@@ -81,18 +81,27 @@ extension PlayerModel {
             self.error = "Failed to move \"\(fileURL.lastPathComponent)\" to Trash: \(error.localizedDescription)"
         }
     }
-    func toggleMute() { command(["cycle", "mute"]) }
+    func toggleMute() {
+        let nextMuted = !muted
+        command(["cycle", "mute"])
+        osd.show(nextMuted ? "Muted" : "Unmuted · \(Int(volume.rounded()))%", symbol: nextMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+    }
     func stepFrame(backward: Bool = false) {
         guard loaded else { return }
         // Explicit pause also cancels a pending resume after model warm-up.
         command(["set", "pause", "yes"])
         command([backward ? "frame-back-step" : "frame-step"])
+        osd.show(backward ? "Previous Frame" : "Next Frame", symbol: backward ? "backward.frame.fill" : "forward.frame.fill")
     }
     func skip(_ direction: Double, long: Bool = false) {
         guard loaded else { return }
-        seek(direction * (long ? longSeekSeconds : seekSeconds), relative: true)
+        let delta = direction * (long ? longSeekSeconds : seekSeconds)
+        seek(delta, relative: true)
+        osd.show(String(format: "%+.0fs", delta), symbol: delta >= 0 ? "goforward" : "gobackward")
     }
-    func changeVolume(_ direction: Double) { setVolume(min(100, max(0, volume + direction * volumeStep))) }
+    func changeVolume(_ direction: Double) {
+        setVolume(min(100, max(0, volume + direction * volumeStep)), showOSD: true)
+    }
     func handleDoubleClick() {
         if miniPlayer { toggleMiniPlayer(); return }
         switch doubleClickAction {
@@ -127,6 +136,7 @@ extension PlayerModel {
                 guard response == .OK, let url = panel.url else { return }
                 // mpv window screenshot includes final scaling, excludes SwiftUI chrome.
                 self.command(["screenshot-to-file", url.path, "window"])
+                self.osd.show("Screenshot Saved", symbol: "camera.fill")
             }
         }
     }

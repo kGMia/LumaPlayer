@@ -2,17 +2,27 @@
 import SwiftUI
 import Combine
 
-/// Reference box for last-activity timestamp, manual hide suppression, and single/double tap discrimination
-/// so high-frequency mouse movement in `.onContinuousHover` never invalidates SwiftUI view state when controls are already visible.
-@MainActor final class ActivityTracker {
+/// Reference box for last-activity timestamp, manual hide suppression, and lower-half motion detection
+/// so high-frequency mouse movement in `.onContinuousHover` never invalidates SwiftUI view state unnecessarily.
+@MainActor final class ActivityTracker: ObservableObject {
     var last = Date()
     private var manuallyHiddenAt = Date.distantPast
     private var hiddenLocation: CGPoint?
-    private var lastHoverLocation: CGPoint = .zero
+    private var lastHoverLocation: CGPoint?
     private var tapTask: Task<Void, Never>?
 
-    func shouldRevealOnHover(at location: CGPoint, controlsVisible: Bool) -> Bool {
+    func shouldRevealOnHover(at location: CGPoint, canvasHeight: CGFloat, controlsVisible: Bool) -> Bool {
+        let previous = lastHoverLocation
         lastHoverLocation = location
+        guard let previous else { return false }
+
+        // Require actual cursor movement (not stationary rest).
+        let movedDistance = hypot(location.x - previous.x, location.y - previous.y)
+        guard movedDistance >= 4.0 else { return false }
+
+        // Require cursor to be in the lower half of the window/canvas (y increases downward in local coordinates).
+        guard canvasHeight > 0, location.y >= canvasHeight * 0.5 else { return false }
+
         if controlsVisible {
             last = Date()
             return false
@@ -27,6 +37,10 @@ import Combine
         }
         self.hiddenLocation = nil
         return true
+    }
+
+    func resetHover() {
+        lastHoverLocation = nil
     }
 
     func recordManualToggle(hiding: Bool) {
@@ -78,10 +92,15 @@ struct PlayerView: View {
     @State private var inspectorBeforeFullScreen = false
     @State private var hoveringControls = false
     @State private var controlsVisible = true
-    @State private var activity = ActivityTracker()
+    @StateObject private var activity = ActivityTracker()
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    private var showOverlaySidebar: Bool {
+        model.inspector && !model.fullScreen && !model.miniPlayer
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        ZStack(alignment: .trailing) {
             ZStack {
                 Color.black.ignoresSafeArea()
                 VideoSurface(model: model)
@@ -105,8 +124,15 @@ struct PlayerView: View {
                     }.foregroundStyle(.white)
                 }
                 VStack {
-                    if model.showVideoInfo && model.loaded && !model.miniPlayer {
-                        HStack { VideoInformationHUD(model: model); Spacer(minLength: 0) }
+                    HStack(alignment: .top) {
+                        if model.showVideoInfo && model.loaded && !model.miniPlayer {
+                            VideoInformationHUD(model: model)
+                        }
+                        Spacer(minLength: 0)
+                        if model.loaded && !model.miniPlayer {
+                            OSDToastView(osd: model.osd)
+                                .padding(.trailing, showOverlaySidebar ? 328 : 0)
+                        }
                     }
                     Spacer()
                     if model.loaded {
@@ -114,7 +140,7 @@ struct PlayerView: View {
                             .frame(maxWidth: 780)
                             .onHover {
                                 if hoveringControls != $0 { hoveringControls = $0 }
-                                revealControls()
+                                if $0 { activity.last = Date() }
                             }
                             .opacity(controlsVisible ? 1 : 0)
                             .allowsHitTesting(controlsVisible)
@@ -126,13 +152,18 @@ struct PlayerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if model.inspector && !model.fullScreen && !model.miniPlayer {
-                PlayerSidebar(model: model)
-                    .frame(width: 316)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
+            // Floating overlay sidebar above the video canvas: opening/closing never resizes VideoView
+            // (avoiding NSOpenGLView reshape stutter) and stays alive in the hierarchy.
+            PlayerSidebar(model: model)
+                .frame(width: 320)
+                .padding(.vertical, 10)
+                .padding(.trailing, 10)
+                .offset(x: showOverlaySidebar ? 0 : 336)
+                .opacity(showOverlaySidebar ? 1 : 0)
+                .allowsHitTesting(showOverlaySidebar)
+                .accessibilityHidden(!showOverlaySidebar)
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: model.inspector && !model.fullScreen && !model.miniPlayer)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: showOverlaySidebar)
         .frame(minWidth: 580, minHeight: 340)
         .ignoresSafeArea(.container, edges: model.fullScreen ? .all : [])
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
@@ -140,8 +171,14 @@ struct PlayerView: View {
             model.onCanvasSingleClick = { handleSingleClick() }
         }
         .onContinuousHover { phase in
-            if case .active(let location) = phase, activity.shouldRevealOnHover(at: location, controlsVisible: controlsVisible) {
-                revealControls()
+            switch phase {
+            case .active(let location):
+                let height = max(model.videoView?.bounds.height ?? model.mainVideoHost?.bounds.height ?? 600, 1)
+                if activity.shouldRevealOnHover(at: location, canvasHeight: height, controlsVisible: controlsVisible) {
+                    revealControls()
+                }
+            case .ended:
+                activity.resetHover()
             }
         }
         .onReceive(timer) { now in

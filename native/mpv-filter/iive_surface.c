@@ -50,7 +50,9 @@ struct mp_image *iive_surface_wrap(CVPixelBufferRef pixels, struct mp_image *att
     pthread_mutex_lock(&mutex);entry->next=surfaces;surfaces=entry;pthread_mutex_unlock(&mutex);
     mp_image_copy_attributes(out,attributes);
     out->params.hw_subfmt=0;
-    out->params.repr.sys=PL_COLOR_SYSTEM_BT_709;out->params.repr.levels=PL_COLOR_LEVELS_LIMITED;
+    if (out->params.repr.sys==PL_COLOR_SYSTEM_UNKNOWN)
+        out->params.repr.sys=PL_COLOR_SYSTEM_BT_709;
+    out->params.repr.levels=PL_COLOR_LEVELS_LIMITED;
     out->params.chroma_location=PL_CHROMA_CENTER;
     struct mp_rect crop=attributes->params.crop;
     out->params.crop=(struct mp_rect){
@@ -94,10 +96,62 @@ int iive_surface_scale_input(struct mp_sws_context *sws, struct mp_image *dst, s
     CVPixelBufferUnlockBaseAddress(p,kCVPixelBufferLock_ReadOnly);
     return result;
 }
+static bool iive_is_supported_sdr(const struct mp_image *img) {
+    if (!img) return false;
+    enum pl_color_levels levels = img->params.repr.levels;
+    if (levels != PL_COLOR_LEVELS_LIMITED && levels != PL_COLOR_LEVELS_UNKNOWN)
+        return false;
+    enum pl_color_system sys = img->params.repr.sys;
+    if (sys != PL_COLOR_SYSTEM_BT_709 &&
+        sys != PL_COLOR_SYSTEM_BT_601 &&
+        sys != PL_COLOR_SYSTEM_BT_2020_NC &&
+        sys != PL_COLOR_SYSTEM_UNKNOWN)
+        return false;
+    enum pl_color_transfer trc = img->params.color.transfer;
+    if (trc != PL_COLOR_TRC_BT_1886 &&
+        trc != PL_COLOR_TRC_SRGB &&
+        trc != PL_COLOR_TRC_GAMMA22 &&
+        trc != PL_COLOR_TRC_GAMMA28 &&
+        trc != PL_COLOR_TRC_UNKNOWN)
+        return false;
+    return true;
+}
+static void iive_apply_cv_color_attachments(CVPixelBufferRef p, const struct mp_image *img) {
+    CFStringRef matrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2;
+    if (img->params.repr.sys == PL_COLOR_SYSTEM_BT_601)
+        matrix = kCVImageBufferYCbCrMatrix_ITU_R_601_4;
+    else if (img->params.repr.sys == PL_COLOR_SYSTEM_BT_2020_NC)
+        matrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
+
+    CFStringRef primaries = kCVImageBufferColorPrimaries_ITU_R_709_2;
+    switch (img->params.color.primaries) {
+    case PL_COLOR_PRIM_BT_601_525:
+        primaries = kCVImageBufferColorPrimaries_SMPTE_C;
+        break;
+    case PL_COLOR_PRIM_BT_601_625:
+        primaries = kCVImageBufferColorPrimaries_EBU_3213;
+        break;
+    case PL_COLOR_PRIM_DISPLAY_P3:
+        primaries = kCVImageBufferColorPrimaries_P3_D65;
+        break;
+    case PL_COLOR_PRIM_BT_2020:
+        primaries = kCVImageBufferColorPrimaries_ITU_R_2020;
+        break;
+    default:
+        break;
+    }
+
+    CFStringRef transfer = kCVImageBufferTransferFunction_ITU_R_709_2;
+    if (img->params.color.transfer == PL_COLOR_TRC_SRGB)
+        transfer = kCVImageBufferTransferFunction_sRGB;
+
+    CVBufferSetAttachment(p, kCVImageBufferYCbCrMatrixKey, matrix, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(p, kCVImageBufferColorPrimariesKey, primaries, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(p, kCVImageBufferTransferFunctionKey, transfer, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(p, kCVImageBufferChromaLocationTopFieldKey, kCVImageBufferChromaLocation_Center, kCVAttachmentMode_ShouldPropagate);
+}
 CVPixelBufferRef iive_surface_acquire(const struct mp_image *img) {
-    if (!img ||
-        img->params.repr.sys!=PL_COLOR_SYSTEM_BT_709 || img->params.repr.levels!=PL_COLOR_LEVELS_LIMITED ||
-        img->params.color.primaries!=PL_COLOR_PRIM_BT_709 || img->params.color.transfer!=PL_COLOR_TRC_BT_1886)
+    if (!iive_is_supported_sdr(img))
         return NULL;
     if (img->imgfmt==IMGFMT_VIDEOTOOLBOX && img->planes[3]) {
         CVPixelBufferRef p=(CVPixelBufferRef)img->planes[3];
@@ -105,10 +159,7 @@ CVPixelBufferRef iive_surface_acquire(const struct mp_image *img) {
             CVPixelBufferGetPlaneCount(p)!=2 || !CVPixelBufferGetIOSurface(p) ||
             img->w!=(int)CVPixelBufferGetWidth(p) || img->h!=(int)CVPixelBufferGetHeight(p))
             return NULL;
-        CVBufferSetAttachment(p,kCVImageBufferYCbCrMatrixKey,kCVImageBufferYCbCrMatrix_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(p,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(p,kCVImageBufferTransferFunctionKey,kCVImageBufferTransferFunction_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(p,kCVImageBufferChromaLocationTopFieldKey,kCVImageBufferChromaLocation_Center,kCVAttachmentMode_ShouldPropagate);
+        iive_apply_cv_color_attachments(p, img);
         return CVPixelBufferRetain(p);
     }
     if (img->imgfmt!=IMGFMT_NV12 || !img->bufs[0] || img->params.chroma_location!=PL_CHROMA_CENTER) return NULL;

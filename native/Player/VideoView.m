@@ -77,6 +77,14 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.20*NSEC_PER_SEC)),dispatch_get_main_queue(),block);
     }
 }
+- (void)scrollWheel:(NSEvent *)event {
+    if(fabs(event.scrollingDeltaY)>fabs(event.scrollingDeltaX) && fabs(event.scrollingDeltaY)>0.05) {
+        double scale=event.hasPreciseScrollingDeltas?0.18:1.5;
+        if(self.onScrollVolume)self.onScrollVolume(event.scrollingDeltaY*scale);
+    } else {
+        [super scrollWheel:event];
+    }
+}
 - (BOOL)startRenderer:(mpv_handle *)mpv {
     [self.openGLContext setView:self];[self.openGLContext update];
     [self.openGLContext makeCurrentContext];GLint interval=1;[self.openGLContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
