@@ -2,6 +2,8 @@
 import SwiftUI
 
 /// Use the system glass renderer; respect the system's transparency preference.
+/// Do not attach `.interactive()` to the container background itself, otherwise clicking the
+/// transport panel or dragging sliders triggers a container-wide press state that recolors child controls.
 struct PlaybackGlass: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var opaque
     func body(content: Content) -> some View {
@@ -11,8 +13,18 @@ struct PlaybackGlass: ViewModifier {
             // A dark scrim keeps controls readable even over saturated video;
             // OpenGL video does not always participate in system backdrop blur.
             content.background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24))
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
         }
+    }
+}
+
+/// Consistent white icon/label button style that never shifts tint when panel responder state changes.
+private struct TransportButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .opacity(configuration.isPressed ? 0.65 : 1.0)
+            .contentShape(Rectangle())
     }
 }
 
@@ -40,15 +52,18 @@ struct FloatingTransport: View {
                 Button { model.toggleMute() } label: {
                     Image(systemName: model.muted || model.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2").font(.callout)
                 }.accessibilityLabel(model.muted ? "Unmute" : "Mute").help("Mute (M)")
-                Slider(value: Binding(get: { model.volume }, set: { model.volume = $0; model.setVolume($0) }), in: 0...100)
+                Slider(value: Binding(get: { model.volume }, set: { model.setVolume($0) }), in: 0...100)
                     .frame(width: 72).accessibilityLabel("Volume")
                 Button { model.showSidebar("queue") } label: { Image(systemName: "list.bullet") }
                     .accessibilityLabel("Play Queue").help("Play Queue (⇧⌘P)")
                     .popover(isPresented: $model.queuePopover, arrowEdge: .top) {
                         QueueView(model: model).frame(width: 360, height: 420)
                     }
-                Toggle(isOn: $model.showVideoInfo) { Image(systemName: model.showVideoInfo ? "info.circle.fill" : "info.circle") }.toggleStyle(.button)
-                    .accessibilityLabel("Video information").help("Video information (⌘I)")
+                Button { model.showVideoInfo.toggle() } label: {
+                    Image(systemName: model.showVideoInfo ? "info.circle.fill" : "info.circle")
+                        .opacity(model.showVideoInfo ? 1.0 : 0.78)
+                }
+                .accessibilityLabel("Video information").help("Video information (⌘I)")
                 Button { model.queuePopover = false; settings.toggle() } label: { Image(systemName: "slider.horizontal.3") }
                     .accessibilityLabel("Quick settings").help("Enhancement settings")
                     .popover(isPresented: $settings, arrowEdge: .top) { QuickEnhancementSettings(model: model) }
@@ -57,7 +72,10 @@ struct FloatingTransport: View {
                     .disabled(model.windowTransition)
                 Button { model.toggleFullScreen() } label: { Image(systemName: model.fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") }
                     .accessibilityLabel(model.fullScreen ? "Exit Full Screen" : "Enter Full Screen").help("Full screen (⌃⌘F)")
-            }.font(.title3).buttonStyle(.plain)
+            }
+            .font(.title3)
+            .buttonStyle(TransportButtonStyle())
+            .focusEffectDisabled()
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
         .modifier(PlaybackGlass())
@@ -85,9 +103,10 @@ struct PlaybackTimeline: View {
                     preview = nil
                 }
             }.controlSize(compact ? .small : .regular)
+                .focusEffectDisabled()
                 .accessibilityLabel("Playback position").disabled(!model.loaded || model.duration <= 0)
             if !compact { Text(time(model.duration)).frame(minWidth: 50, alignment: .leading) }
-        }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }.font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.75))
             .onChange(of: model.path) { scrubbing = false; preview = nil }
             .onDisappear { scrubbing = false; preview = nil }
             .help("\(time(model.position)) / \(time(model.duration)) · Drag to seek")
@@ -188,7 +207,15 @@ struct NativePlayerMenu: NSViewRepresentable {
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: true)
         button.isBordered = false
-        button.bezelStyle = .accessoryBarAction
+        button.appearance = NSAppearance(named: .darkAqua)
+        button.contentTintColor = .white
+        button.focusRingType = .none
+        if let cell = button.cell as? NSPopUpButtonCell {
+            cell.highlightsBy = []
+            cell.showsStateBy = []
+            cell.arrowPosition = .noArrow
+        }
+        button.font = .systemFont(ofSize: 13, weight: .medium)
         button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
         button.setAccessibilityLabel(help)
         button.toolTip = help
@@ -202,7 +229,10 @@ struct NativePlayerMenu: NSViewRepresentable {
     func updateNSView(_ view: NSPopUpButton, context: Context) {
         // Update the next-open builder only, never mutate a menu being tracked.
         context.coordinator.parent = self
-        if !context.coordinator.tracking, let first = view.menu?.items.first { first.title = title }
+        view.contentTintColor = .white
+        if !context.coordinator.tracking, let first = view.menu?.items.first {
+            context.coordinator.configureLabelItem(first)
+        }
     }
     static func dismantleNSView(_ view: NSPopUpButton, coordinator: Coordinator) {
         view.menu?.cancelTracking()
@@ -212,11 +242,32 @@ struct NativePlayerMenu: NSViewRepresentable {
         var tracking = false
         private var actions: [() -> Void] = []
         init(_ parent: NativePlayerMenu) { self.parent = parent }
+        func configureLabelItem(_ label: NSMenuItem) {
+            if parent.title.isEmpty {
+                label.title = ""
+            } else {
+                label.attributedTitle = NSAttributedString(
+                    string: parent.title,
+                    attributes: [
+                        .foregroundColor: NSColor.white,
+                        .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+                    ]
+                )
+            }
+            if !parent.symbol.isEmpty {
+                let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+                    .applying(.init(paletteColors: [.white]))
+                let img = NSImage(systemSymbolName: parent.symbol, accessibilityDescription: parent.help)?
+                    .withSymbolConfiguration(config)
+                img?.isTemplate = false
+                label.image = img
+            }
+        }
         func install(_ menu: NSMenu) {
             guard !tracking else { return }
             menu.removeAllItems(); actions.removeAll()
             let label = NSMenuItem(title: parent.title, action: nil, keyEquivalent: "")
-            if !parent.symbol.isEmpty { label.image = NSImage(systemSymbolName: parent.symbol, accessibilityDescription: parent.help) }
+            configureLabelItem(label)
             menu.addItem(label) // Pull-down button label, not a selectable menu entry.
             append(parent.entries(), to: menu)
         }

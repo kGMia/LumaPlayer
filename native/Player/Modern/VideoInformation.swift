@@ -42,6 +42,17 @@ extension PlayerModel {
     var sourceColor: String {
         ["primaries", "gamma", "colormatrix", "colorlevels"].map { source[$0] as? String ?? "N/A" }.joined(separator: " · ")
     }
+    var hudDecoderDescription: String {
+        let raw = (snapshot["hwdec-current"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let active: String
+        switch raw {
+        case "", "no": active = "Software"
+        case "videotoolbox": active = "VideoToolbox (HW)"
+        case "videotoolbox-copy": active = "VideoToolbox Copy"
+        default: active = raw
+        }
+        return "\(active) · req \(effectiveDecoderOption)"
+    }
     func jobTime(_ label: String) -> String {
         guard let value = Double(meta(label)["processing_ms"] ?? ""), value.isFinite else { return "N/A" }
         return String(format: "%.2f ms", value)
@@ -64,8 +75,13 @@ struct VideoInformationHUD: View {
                 Text(model.outputDescription)
                 Text(model.fps("estimated-vf-fps")).foregroundStyle(.secondary)
             }
+            HStack(spacing: 8) {
+                Image(systemName: "cpu").foregroundStyle(.secondary)
+                Text("Decoder").foregroundStyle(.secondary)
+                Text(model.hudDecoderDescription)
+            }
             Text("\(model.sourceCodec) · \(model.videoBitrate)").lineLimit(2)
-            Text("CPU \(model.processCPU) · Memory \(model.memoryDescription("process-memory-bytes")) · GPU N/A")
+            Text("CPU \(model.processCPU) · Memory \(model.memoryDescription("process-memory-bytes"))")
             Text("Video packet bitrate · Output cadence estimated from frame timestamps").font(.caption2).foregroundStyle(.secondary)
         }.font(.caption.monospacedDigit()).padding(14).modifier(PlaybackGlass())
         .allowsHitTesting(false)
@@ -79,6 +95,7 @@ struct VideoInformationRows: View {
         LabeledContent("Source FPS (container)", value: model.fps("container-fps"))
         LabeledContent("Video codec / profile", value: model.sourceCodec)
         LabeledContent("Active hardware decoder", value: model.snapshot["hwdec-current"] as? String ?? "N/A")
+        LabeledContent("Requested decoder", value: model.effectiveDecoderOption)
         LabeledContent("Video bitrate (packet estimate)", value: model.videoBitrate)
         LabeledContent("Declared video bitrate", value: model.declaredVideoBitrate)
         LabeledContent("Audio codec", value: model.audioCodec)
@@ -95,9 +112,7 @@ struct VideoInformationRows: View {
         LabeledContent("Player CPU", value: model.processCPU)
         LabeledContent("Player memory footprint", value: model.memoryDescription("process-memory-bytes"))
         LabeledContent("Resident memory", value: model.memoryDescription("process-resident-bytes"))
-        LabeledContent("GPU utilization", value: "N/A")
-        Text("CPU samples this process once per second; 100% equals one CPU core. Memory is this process, not system usage. Reliable per-process GPU utilization is unavailable through the current public integration; inference latency is not GPU utilization.").font(.caption).foregroundStyle(.secondary)
-        LabeledContent("Requested decoder", value: model.effectiveDecoderOption)
+        Text("CPU samples this process once per second; 100% equals one CPU core. Memory is this process, not system usage.").font(.caption).foregroundStyle(.secondary)
         LabeledContent("Added rotation", value: "\(Int(model.number("video-rotate") ?? Double(model.rotation)))°")
         Text(model.colorProfileStatus).font(.caption).foregroundStyle(.secondary)
         Text("Output FPS uses recent frame timestamps, not physical display measurements; it may fluctuate after seeks and does not include playback speed. Filter output precedes any display shader. Picture area includes final display scaling.")
@@ -146,21 +161,26 @@ extension PlayerModel {
         let panel = NSOpenPanel()
         panel.title = "Choose RGB ICC Profile"
         panel.allowsMultipleSelection = false; panel.canChooseDirectories = false
+        menuState.modalPanelActive = true
         panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 guard let self else { return }
-                let data = await Task.detached(priority: .utility) { () -> Data? in
-                    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 16 * 1024 * 1024 else { return nil }
-                    return try? Data(contentsOf: url)
-                }.value
-                guard let data, NSColorSpace(iccProfileData: data)?.colorSpaceModel == .rgb else {
-                    self.colorProfileStatus = "Invalid or unsupported RGB ICC profile (maximum 16 MB)."; return
+                self.menuState.modalPanelActive = NSApp?.modalWindow != nil
+                guard response == .OK, let url = panel.url else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let data = await Task.detached(priority: .utility) { () -> Data? in
+                        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 16 * 1024 * 1024 else { return nil }
+                        return try? Data(contentsOf: url)
+                    }.value
+                    guard let data, NSColorSpace(iccProfileData: data)?.colorSpaceModel == .rgb else {
+                        self.colorProfileStatus = "Invalid or unsupported RGB ICC profile (maximum 16 MB)."; return
+                    }
+                    // Keep a small validated copy so removing the original file does not break playback.
+                    UserDefaults.standard.set(data, forKey: "customICCData")
+                    UserDefaults.standard.set(url.lastPathComponent, forKey: "customICCName")
+                    self.colorProfile = "custom"
                 }
-                // Keep a small validated copy so removing the original file does not break playback.
-                UserDefaults.standard.set(data, forKey: "customICCData")
-                UserDefaults.standard.set(url.lastPathComponent, forKey: "customICCName")
-                self.colorProfile = "custom"
             }
         }
     }

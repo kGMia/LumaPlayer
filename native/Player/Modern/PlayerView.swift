@@ -2,6 +2,12 @@
 import SwiftUI
 import Combine
 
+/// Reference box for last-activity timestamp so high-frequency mouse movement
+/// in `.onContinuousHover` never invalidates SwiftUI view state when controls are already visible.
+final class ActivityTracker {
+    var last = Date()
+}
+
 struct VideoSurface: NSViewRepresentable {
     @ObservedObject var model: PlayerModel
     func makeNSView(context: Context) -> NSView {
@@ -23,7 +29,7 @@ struct PlayerView: View {
     @State private var inspectorBeforeFullScreen = false
     @State private var hoveringControls = false
     @State private var controlsVisible = true
-    @State private var lastActivity = Date()
+    @State private var activity = ActivityTracker()
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     var body: some View {
         ZStack {
@@ -58,7 +64,10 @@ struct PlayerView: View {
                     if model.loaded {
                         FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
                         .frame(maxWidth: 780)
-                        .onHover { hoveringControls = $0; revealControls() }
+                        .onHover {
+                            if hoveringControls != $0 { hoveringControls = $0 }
+                            revealControls()
+                        }
                         .opacity(controlsVisible ? 1 : 0)
                         .allowsHitTesting(controlsVisible)
                         .accessibilityHidden(!controlsVisible)
@@ -71,7 +80,7 @@ struct PlayerView: View {
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
         .onContinuousHover { phase in if case .active = phase { revealControls() } }
         .onReceive(timer) { now in
-            if !model.menuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(lastActivity) > model.controlsHideDelay {
+            if controlsVisible && !model.menuTracking && !model.systemMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
             }
         }
@@ -83,6 +92,7 @@ struct PlayerView: View {
         .onChange(of: model.queuePopover) { revealControls() }
         .onChange(of: model.fullScreen) { revealControls() }
         .onChange(of: model.menuTracking) { revealControls() }
+        .onChange(of: model.systemMenuTracking) { revealControls() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { note in
             if let window = note.object as? NSWindow, window === model.videoView?.window, model.colorProfile == "display" { model.applyColorProfile() }
         }
@@ -146,8 +156,10 @@ struct PlayerView: View {
         }
     }
     private func revealControls() {
-        if !controlsVisible { withAnimation(reduceMotion ? nil : .easeIn(duration: 0.15)) { controlsVisible = true } }
-        if Date().timeIntervalSince(lastActivity) > 0.2 { lastActivity = Date() }
+        activity.last = Date()
+        if !controlsVisible {
+            withAnimation(reduceMotion ? nil : .easeIn(duration: 0.15)) { controlsVisible = true }
+        }
     }
 }
 
@@ -181,8 +193,7 @@ struct EnhancementInspector: View {
             }
             Section("Processing") {
                 Text("Interpolation → Super Resolution → Display").font(.callout)
-                Text("Apple effects: VideoToolbox. Native RIFE and FSRCNNX: FP16 Metal / MPSGraph. Compatible native stages share pooled NV12 surfaces.").font(.caption).foregroundStyle(.secondary)
-                Text("GPU / Neural Accelerator utilization: N/A (not measured). Scheduling is managed by Apple frameworks; this does not prove ANE execution. Native enhancement supports SDR BT.709; unsupported input bypasses it.").font(.caption).foregroundStyle(.secondary)
+                Text("Apple effects: VideoToolbox. Native RIFE and FSRCNNX: FP16 Metal / MPSGraph. Compatible native stages share pooled NV12 IOSurfaces directly from VideoToolbox hardware decoding.").font(.caption).foregroundStyle(.secondary)
             }
             if !model.error.isEmpty { Section("Playback Message") { Text(model.error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) } }
         }.formStyle(.grouped).scrollContentBackground(.hidden)

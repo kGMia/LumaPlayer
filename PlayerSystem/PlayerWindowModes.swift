@@ -208,11 +208,12 @@ private struct MiniVideoSurface: NSViewRepresentable {
 }
 private struct MiniPlayerContent: View {
     @ObservedObject var model: PlayerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let host: NSView
     @State private var scrubbing = false
     @State private var controlsVisible = true
     @State private var hoveringControls = false
-    @State private var lastActivity = Date()
+    @State private var activity = ActivityTracker()
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     var body: some View {
         ZStack {
@@ -220,7 +221,8 @@ private struct MiniPlayerContent: View {
             MiniVideoSurface(host: host)
                 .onTapGesture(count: 2) { model.windowModes.restore(model) }
             MiniTransport(model: model, scrubbing: $scrubbing) { hovering in
-                hoveringControls = hovering; reveal()
+                if hoveringControls != hovering { hoveringControls = hovering }
+                reveal()
             }.opacity(controlsVisible ? 1 : 0)
                 .allowsHitTesting(controlsVisible).accessibilityHidden(!controlsVisible)
         }.ignoresSafeArea().environment(\.colorScheme, .dark)
@@ -229,8 +231,8 @@ private struct MiniPlayerContent: View {
             .onChange(of: model.path) { reveal() }
             .onChange(of: model.autoHideControls) { reveal() }
             .onReceive(timer) { now in
-                if !model.menuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(lastActivity) > model.controlsHideDelay {
-                    controlsVisible = false
+                if controlsVisible && !model.menuTracking && !model.systemMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
                 }
             }
             .onExitCommand { model.windowModes.restore(model) }
@@ -238,7 +240,12 @@ private struct MiniPlayerContent: View {
                 guard !urls.isEmpty else { return false }; model.openFiles(urls); return true
             }
     }
-    private func reveal() { controlsVisible = true; lastActivity = Date() }
+    private func reveal() {
+        activity.last = Date()
+        if !controlsVisible {
+            withAnimation(reduceMotion ? nil : .easeIn(duration: 0.15)) { controlsVisible = true }
+        }
+    }
 }
 
 extension PlayerModel {
@@ -268,6 +275,7 @@ struct MiniGlassButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: symbolSize, weight: .semibold))
+                .foregroundStyle(.white)
                 .frame(width: diameter, height: diameter).contentShape(Circle())
         }.buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: Circle())

@@ -4,13 +4,13 @@ import UniformTypeIdentifiers
 import AVFoundation
 import ImageIO
 
-struct QueueItem: Identifiable {
+struct QueueItem: Identifiable, Equatable {
     let id: Int64
     let title: String
     let filename: String
     let current: Bool
 }
-struct MediaChapter: Identifiable {
+struct MediaChapter: Identifiable, Equatable {
     let id: Int
     let title: String
     let time: Double
@@ -80,10 +80,15 @@ extension PlayerModel {
         guard loaded else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "\(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)-\(Int(max(0, position)))s.png"
+        menuState.modalPanelActive = true
         panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            // mpv window screenshot includes final scaling, excludes SwiftUI chrome.
-            self?.command(["screenshot-to-file", url.path, "window"])
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.menuState.modalPanelActive = NSApp?.modalWindow != nil
+                guard response == .OK, let url = panel.url else { return }
+                // mpv window screenshot includes final scaling, excludes SwiftUI chrome.
+                self.command(["screenshot-to-file", url.path, "window"])
+            }
         }
     }
 }
