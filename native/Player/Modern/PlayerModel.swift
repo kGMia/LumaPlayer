@@ -7,8 +7,45 @@ struct MediaTrack: Identifiable, Equatable {
     let title: String
 }
 
+/// High-frequency timeline progress state (4 Hz), observed only by `PlaybackTimeline`.
+/// Decouples `PlayerView`, `.toolbar`, and `.commands` from playback time ticks.
+@MainActor final class PlayerTimelineState: ObservableObject {
+    @Published var position = 0.0
+    @Published var duration = 0.0
+
+    func update(position nextPosition: Double, duration nextDuration: Double) {
+        if abs(position - nextPosition) > 0.001 { position = nextPosition }
+        if abs(duration - nextDuration) > 0.001 { duration = nextDuration }
+    }
+    func reset() {
+        if position != 0 { position = 0 }
+        if duration != 0 { duration = 0 }
+    }
+}
+
+/// High-frequency HUD and Inspector telemetry state (4 Hz), observed only by
+/// `VideoInformationHUD`, `VideoInformationRows`, and `EnhancementInspector`.
+@MainActor final class PlayerTelemetryState: ObservableObject {
+    var raw: [String: Any] = [:]
+    @Published private(set) var snapshot: [String: Any] = [:]
+
+    func update(_ value: [String: Any], visible: Bool) {
+        raw = value
+        if visible {
+            snapshot = value
+        }
+    }
+    func flush() {
+        snapshot = raw
+    }
+    func reset() {
+        raw = [:]
+        snapshot = [:]
+    }
+}
+
 /// Dedicated low-frequency state for the macOS system menu bar (.commands).
-/// Decouples NSApp.mainMenu from 4 Hz playback position/telemetry updates so open menus never flicker.
+/// Decouples NSApp.mainMenu and its 2nd-level submenus from playback telemetry updates.
 @MainActor final class PlayerMenuState: ObservableObject {
     @Published var paused = true
     @Published var loaded = false
@@ -20,6 +57,7 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var miniPlayer = false
     @Published var master = true
     @Published var showVideoInfo = true
+    @Published var showTimelinePreview = true
     @Published var inspector = false
     @Published var repeatMode = "off"
     @Published var seekSeconds = 5.0
@@ -29,7 +67,7 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var modalPanelActive = false
 
     func sync(from model: PlayerModel) {
-        guard !model.menuTracking && !model.systemMenuTracking else { return }
+        guard !model.isMenuTracking else { return }
         if paused != model.paused { paused = model.paused }
         if loaded != model.loaded { loaded = model.loaded }
         if canPrevious != model.canPrevious { canPrevious = model.canPrevious }
@@ -41,6 +79,7 @@ struct MediaTrack: Identifiable, Equatable {
         if miniPlayer != model.miniPlayer { miniPlayer = model.miniPlayer }
         if master != model.master { master = model.master }
         if showVideoInfo != model.showVideoInfo { showVideoInfo = model.showVideoInfo }
+        if showTimelinePreview != model.showTimelinePreview { showTimelinePreview = model.showTimelinePreview }
         if inspector != model.inspector { inspector = model.inspector }
         if repeatMode != model.repeatMode { repeatMode = model.repeatMode }
         if seekSeconds != model.seekSeconds { seekSeconds = model.seekSeconds }
@@ -55,11 +94,20 @@ struct MediaTrack: Identifiable, Equatable {
 
 @MainActor final class PlayerModel: ObservableObject {
     let menuState = PlayerMenuState()
+    let timeline = PlayerTimelineState()
+    let telemetry = PlayerTelemetryState()
+
     @Published var title = "IIVE Player"
     @Published var path = "" { didSet { menuState.sync(from: self) } }
     @Published var paused = true { didSet { menuState.sync(from: self) } }
-    @Published var position = 0.0
-    @Published var duration = 0.0
+    var position: Double { timeline.position }
+    var duration: Double { timeline.duration }
+    var snapshot: [String: Any] { telemetry.raw }
+    @Published var loaded = false { didSet { menuState.sync(from: self) } }
+    @Published var muted = false { didSet { menuState.sync(from: self) } }
+    @Published var queue: [QueueItem] = [] { didSet { menuState.sync(from: self) } }
+    @Published var chapters: [MediaChapter] = [] { didSet { menuState.sync(from: self) } }
+    @Published var queueIndex = -1 { didSet { menuState.sync(from: self) } }
     @Published var volume = 50.0
     @Published var speed = 1.0
     @Published var master = true { didSet { if preferencesReady { configure(); menuState.sync(from: self) } } }
@@ -110,10 +158,18 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var autoHideControls = UserDefaults.standard.object(forKey: "autoHideControls") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoHideControls, forKey: "autoHideControls") }
     }
+    @Published var showTimelinePreview = UserDefaults.standard.object(forKey: "showTimelinePreview") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showTimelinePreview, forKey: "showTimelinePreview"); menuState.sync(from: self) }
+    }
     @Published var repeatMode = UserDefaults.standard.string(forKey: "repeatMode") ?? "off" {
         didSet { UserDefaults.standard.set(repeatMode, forKey: "repeatMode"); applyRepeat(); menuState.sync(from: self) }
     }
-    @Published var inspector = false { didSet { menuState.sync(from: self) } }
+    @Published var inspector = false {
+        didSet {
+            if inspector { telemetry.flush() }
+            menuState.sync(from: self)
+        }
+    }
     @Published var sidebarTab = "queue"
     @Published var queuePopover = false
     @Published var quickSettings = false
@@ -132,12 +188,18 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var decoder = UserDefaults.standard.string(forKey: "decoder") ?? "no" {
         didSet { UserDefaults.standard.set(decoder, forKey: "decoder"); applyDecoder() }
     }
-    @Published var menuTracking = false {
-        didSet { if !menuTracking { menuState.sync(from: self) } }
+    // Non-published menu tracking state so opening/closing menus or submenus never invalidates SwiftUI views.
+    var menuTracking = false {
+        didSet { if !isMenuTracking { flushDeferredSnapshot() } }
     }
-    @Published var systemMenuTracking = false {
-        didSet { if !systemMenuTracking { menuState.sync(from: self) } }
+    private var menuTrackingDepth = 0 {
+        didSet { if !isMenuTracking { flushDeferredSnapshot() } }
     }
+    var isMenuTracking: Bool {
+        menuTracking || menuTrackingDepth > 0 || RunLoop.current.currentMode == .eventTracking
+    }
+    private var deferredSnapshot: [String: Any]?
+
     @Published var rotation = UserDefaults.standard.integer(forKey: "videoRotation") {
         didSet { UserDefaults.standard.set(rotation, forKey: "videoRotation"); command(["set", "video-rotate", String(rotation)]) }
     }
@@ -166,12 +228,15 @@ struct MediaTrack: Identifiable, Equatable {
     var queueDateTask: Task<Void, Never>?
     var queueMembership = ""
     var queueOrderRequest = ""
-    private var lastPlaylistSignature = ""
     private var volumeAdjustedAt = 0.0
 
     @Published var fullScreen = false { didSet { menuState.sync(from: self) } }
     @Published var showVideoInfo = UserDefaults.standard.object(forKey: "showVideoInfo") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showVideoInfo, forKey: "showVideoInfo"); menuState.sync(from: self) }
+        didSet {
+            UserDefaults.standard.set(showVideoInfo, forKey: "showVideoInfo")
+            if showVideoInfo { telemetry.flush() }
+            menuState.sync(from: self)
+        }
     }
     weak var window: NSWindow?
     weak var mainVideoHost: NSView?
@@ -180,7 +245,6 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var srStatus = "Off"
     @Published var fiStatus = "Off"
     @Published var error = ""
-    @Published var snapshot: [String: Any] = [:]
     @Published var recent: [String] { didSet { menuState.sync(from: self) } }
     @Published var audioTracks: [MediaTrack] = []
     @Published var subtitles: [MediaTrack] = []
@@ -222,12 +286,27 @@ struct MediaTrack: Identifiable, Equatable {
         let center = NotificationCenter.default
         menuObservers = [
             center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.systemMenuTracking = true }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.menuTrackingDepth += 1
+                }
             },
             center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.systemMenuTracking = false }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.menuTrackingDepth = max(0, self.menuTrackingDepth - 1)
+                }
             }
         ]
+    }
+    private func flushDeferredSnapshot() {
+        guard !isMenuTracking else { return }
+        if let pending = deferredSnapshot {
+            deferredSnapshot = nil
+            receive(pending)
+        } else {
+            menuState.sync(from: self)
+        }
     }
     func argument(_ name: String) -> String? {
         let args = ProcessInfo.processInfo.arguments
@@ -338,8 +417,8 @@ struct MediaTrack: Identifiable, Equatable {
         preferencesReady = true
         configure()
     }
-    func number(_ key: String) -> Double? { (snapshot[key] as? NSNumber)?.doubleValue }
-    var source: [String: Any] { snapshot["video-params"] as? [String: Any] ?? [:] }
+    func number(_ key: String) -> Double? { (telemetry.raw[key] as? NSNumber)?.doubleValue }
+    var source: [String: Any] { telemetry.raw["video-params"] as? [String: Any] ?? [:] }
     var sdr: Bool {
         let prim = (source["primaries"] as? String)?.lowercased() ?? ""
         let gamma = (source["gamma"] as? String)?.lowercased() ?? ""
@@ -349,43 +428,63 @@ struct MediaTrack: Identifiable, Equatable {
         let validGammas = ["bt.1886", "srgb", "bt.709", "gamma2.2", "gamma2.8"]
         return validPrimaries.contains(prim) && validGammas.contains(gamma)
     }
-    var loaded: Bool { !source.isEmpty }
     var sourceDescription: String {
         guard let w = source["w"], let h = source["h"] else { return "N/A" }
         return "\(w) × \(h)"
     }
     var renderRate: String { number("render-callback-fps").map { String(format: "%.1f fps", $0) } ?? "N/A" }
-    func meta(_ label: String) -> [String: String] { snapshot[label] as? [String: String] ?? [:] }
+    func meta(_ label: String) -> [String: String] { telemetry.raw[label] as? [String: String] ?? [:] }
     var latency: String {
         let values = ["iive-rife", "iive-fi", "iive-sr"].compactMap { Double(meta($0)["processing_ms"] ?? "") }
         return values.isEmpty ? "N/A" : String(format: "%.1f ms", values.reduce(0, +))
     }
     private func receive(_ value: [String: Any]) {
+        // Never mutate any @Published state while a menu or submenu is open/tracking.
+        guard !isMenuTracking else {
+            deferredSnapshot = value
+            return
+        }
         let now = ProcessInfo.processInfo.systemUptime
         let nextPath = value["path"] as? String ?? ""
         if nextPath != path { savePosition() }
-        // Avoid mutating @Published properties while a menu is actively tracking to prevent AppKit/SwiftUI menu redraws.
-        if !systemMenuTracking && !menuTracking {
-            snapshot = value
+        telemetry.update(value, visible: showVideoInfo || inspector)
+
+        let nextLoaded = !(value["video-params"] as? [String: Any] ?? [:]).isEmpty
+        if loaded != nextLoaded { loaded = nextLoaded }
+        let nextMuted = value["mute"] as? Bool ?? false
+        if muted != nextMuted { muted = nextMuted }
+
+        let nextQueue = (value["playlist"] as? [[String: Any]] ?? []).compactMap { item -> QueueItem? in
+            guard let id = item["id"] as? NSNumber, let filename = item["filename"] as? String else { return nil }
+            return QueueItem(
+                id: id.int64Value,
+                title: item["title"] as? String ?? URL(fileURLWithPath: filename).lastPathComponent,
+                filename: filename,
+                current: item["current"] as? Bool ?? false
+            )
         }
-        let rawPlaylist = value["playlist"] as? [[String: Any]] ?? []
-        let playlistSig = rawPlaylist.compactMap { item -> String? in
-            guard let id = item["id"] else { return nil }
-            return "\(id):\(item["current"] as? Bool ?? false)"
-        }.joined(separator: ",")
-        if playlistSig != lastPlaylistSignature {
-            lastPlaylistSignature = playlistSig
+        if queue != nextQueue {
+            queue = nextQueue
             synchronizeQueueOrder()
         }
+        let nextQueueIndex = Int((value["playlist-pos"] as? NSNumber)?.doubleValue ?? -1)
+        if queueIndex != nextQueueIndex { queueIndex = nextQueueIndex }
+
+        let nextChapters = (value["chapter-list"] as? [[String: Any]] ?? []).enumerated().compactMap { index, item -> MediaChapter? in
+            guard let time = item["time"] as? Double, time.isFinite, time >= 0 else { return nil }
+            return MediaChapter(id: index, title: item["title"] as? String ?? "Chapter \(index + 1)", time: time)
+        }
+        if chapters != nextChapters { chapters = nextChapters }
+
         let nextTitle = value["media-title"] as? String ?? "IIVE Player"
         if title != nextTitle { title = nextTitle }
         if path != nextPath { path = nextPath }
         let nextPaused = value["pause"] as? Bool ?? true
         if paused != nextPaused { paused = nextPaused }
         let nextPos = (value["time-pos"] as? NSNumber)?.doubleValue ?? 0
-        if abs(position - nextPos) > 0.001 { position = nextPos }
         let nextDur = (value["duration"] as? NSNumber)?.doubleValue ?? 0
-        if abs(duration - nextDur) > 0.001 { duration = nextDur }
+        timeline.update(position: nextPos, duration: nextDur)
+
         let nextVol = (value["volume"] as? NSNumber)?.doubleValue ?? 50
         if now - volumeAdjustedAt > 0.45 && abs(volume - nextVol) > 0.01 { volume = nextVol }
         let nextSpeed = (value["speed"] as? NSNumber)?.doubleValue ?? 1
@@ -484,7 +583,7 @@ struct MediaTrack: Identifiable, Equatable {
             }
             else if shaderFailed && sr.hasPrefix("fsrcnnx") && !sr.contains("metal") { nextSrStatus = "Disabled · shader execution not confirmed; Retry" }
             else if sr == "apple" {
-                let scales = snapshot["apple-sr-scales"] as? [Double] ?? []
+                let scales = telemetry.raw["apple-sr-scales"] as? [Double] ?? []
                 let supported = scales.filter { $0 > 1 }.sorted()
                 if let factor = supported.first(where: { $0 >= scale }) ?? supported.last {
                     filters.append("@iive-sr:iive-apple=mode=sr:scale=\(factor):fallback=\(fallbackOption)")
@@ -496,7 +595,7 @@ struct MediaTrack: Identifiable, Equatable {
                 } else {
                     let name = sr == "fsrcnnx16" ? "FSRCNNX_x2_16-0-4-1" : "FSRCNNX_x2_8-0-4-1"
                     shader = Bundle.main.url(forResource: name, withExtension: "glsl", subdirectory: "Shaders")?.path
-                    let passes = String(describing: snapshot["vo-passes"] ?? "")
+                    let passes = String(describing: telemetry.raw["vo-passes"] ?? "")
                     nextSrStatus = shader == nil ? "Error · shader resource missing" : passes.contains(sr == "fsrcnnx16" ? "IIVE FSRCNNX 16 / aggregation" : "IIVE FSRCNNX 8 / aggregation") ? "Active · GPU pass confirmed" : "Verifying GPU shader execution"
                 }
             }
@@ -508,7 +607,7 @@ struct MediaTrack: Identifiable, Equatable {
             session?.applyFilters(filters, shader: shader); lastPlan = plan; settledSamples = 0
         }
     }
-    private func valueBool(_ key: String) -> Bool { snapshot[key] as? Bool ?? false }
+    private func valueBool(_ key: String) -> Bool { telemetry.raw[key] as? Bool ?? false }
     private func state(_ label: String) -> String {
         switch meta(label)["state"] ?? "warming" {
         case "active": return paused ? "Paused · ready" : "Active"
@@ -529,7 +628,7 @@ struct MediaTrack: Identifiable, Equatable {
         saved = saved.filter { recent.contains($0.key) }
         defaults.set(saved, forKey: "positions")
     }
-    func shutdown() { queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; lastPlaylistSignature = ""; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); snapshot = [:]; path = ""; title = "IIVE Player"; paused = true; position = 0; duration = 0; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self) }
+    func shutdown() { queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; deferredSnapshot = nil; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); telemetry.reset(); timeline.reset(); loaded = false; muted = false; queue = []; chapters = []; queueIndex = -1; path = ""; title = "IIVE Player"; paused = true; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self) }
 }
 private extension String { var nonempty: String? { isEmpty ? nil : self } }
 

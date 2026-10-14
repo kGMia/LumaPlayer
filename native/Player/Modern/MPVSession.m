@@ -30,6 +30,8 @@ static NSArray<NSString *> *observedKeys(void) {
     dispatch_queue_t _queue;
     dispatch_source_t _timer;
     NSMutableDictionary *_observed;
+    NSDictionary *_pendingSnapshot;
+    BOOL _snapshotScheduled;
     NSString *_error;
     NSFileHandle *_metrics;
     BOOL _closed, _resumeAfterWarm;
@@ -266,7 +268,31 @@ static NSArray<NSString *> *observedKeys(void) {
         if(ready || now>_warmDeadline){[self send:@[@"set",@"pause",@"no"]];_observed[@"pause"]=@NO;_resumeAfterWarm=NO;}
     }
     if(_metrics){NSData *json=[NSJSONSerialization dataWithJSONObject:s options:NSJSONWritingSortedKeys error:nil];if(json){[_metrics writeData:json];[_metrics writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];}}
-    dispatch_async(dispatch_get_main_queue(),^{if(!self->_closed&&self.onSnapshot)self.onSnapshot(s);});
+    // Deliver UI snapshots exclusively in kCFRunLoopDefaultMode so main-thread SwiftUI
+    // state never mutates during NSEventTrackingRunLoopMode (when menus or submenus are open).
+    BOOL schedule=NO;
+    @synchronized(self) {
+        _pendingSnapshot=s;
+        if(!_snapshotScheduled){_snapshotScheduled=YES;schedule=YES;}
+    }
+    if(schedule) {
+        CFRunLoopRef mainLoop=CFRunLoopGetMain();
+        __weak MPVSession *weakSelf=self;
+        CFRunLoopPerformBlock(mainLoop,kCFRunLoopDefaultMode,^{
+            MPVSession *strongSelf=weakSelf;
+            if(!strongSelf)return;
+            NSDictionary *latest=nil;
+            @synchronized(strongSelf) {
+                latest=strongSelf->_pendingSnapshot;
+                strongSelf->_pendingSnapshot=nil;
+                strongSelf->_snapshotScheduled=NO;
+            }
+            if(!strongSelf->_closed && latest && strongSelf.onSnapshot) {
+                strongSelf.onSnapshot(latest);
+            }
+        });
+        CFRunLoopWakeUp(mainLoop);
+    }
 }
 - (void)shutdown {
     if(_closed)return;_closed=YES;self.onSnapshot=nil;

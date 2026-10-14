@@ -80,7 +80,7 @@ struct PlayerView: View {
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
         .onContinuousHover { phase in if case .active = phase { revealControls() } }
         .onReceive(timer) { now in
-            if controlsVisible && !model.menuTracking && !model.systemMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
+            if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
             }
         }
@@ -91,8 +91,6 @@ struct PlayerView: View {
         .onChange(of: model.quickSettings) { revealControls() }
         .onChange(of: model.queuePopover) { revealControls() }
         .onChange(of: model.fullScreen) { revealControls() }
-        .onChange(of: model.menuTracking) { revealControls() }
-        .onChange(of: model.systemMenuTracking) { revealControls() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { note in
             if let window = note.object as? NSWindow, window === model.videoView?.window, model.colorProfile == "display" { model.applyColorProfile() }
         }
@@ -165,7 +163,13 @@ struct PlayerView: View {
 
 struct EnhancementInspector: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var telemetry: PlayerTelemetryState
+    init(model: PlayerModel) {
+        self.model = model
+        self.telemetry = model.telemetry
+    }
     var body: some View {
+        let _ = telemetry.snapshot.count
         Form {
             Section("Enhancement") {
                 EnhancementControls(model: model)

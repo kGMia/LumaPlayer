@@ -3,12 +3,21 @@ import SwiftUI
 
 struct PlayerSettings: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var telemetry: PlayerTelemetryState
+    init(model: PlayerModel) {
+        self.model = model
+        self.telemetry = model.telemetry
+    }
     var body: some View {
+        let _ = telemetry.snapshot.count
         TabView {
             Form {
                 Section("Viewing") {
                     Toggle("Show Live Video Information", isOn: $model.showVideoInfo)
-                    Text("Resolution, cadence, video codec and packet bitrate. Toggle at any time with ⌘I or the information button in the playback bar.")
+                    Text("Resolution, cadence, decoder, video codec and packet bitrate. Toggle at any time with ⌘I or the information button in the playback bar.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Show Timeline Hover Preview", isOn: $model.showTimelinePreview)
+                    Text("Displays a video frame thumbnail, chapter title, and timestamp bubble when hovering or dragging across the progress bar.")
                         .font(.caption).foregroundStyle(.secondary)
                     Toggle("Automatically Hide Playback Controls", isOn: $model.autoHideControls)
                     Stepper(value: $model.controlsHideDelay, in: 1...15, step: 1) {
@@ -56,7 +65,7 @@ struct PlayerSettings: View {
                         LabeledContent("Interpolate sources up to", value: "\(Int(model.fiMaximumFPS)) fps")
                     }
                     heightPicker("Interpolation maximum source height", selection: $model.fiMaximumHeight)
-                    Text("Limits apply to source pixels and source FPS. Display scale uses the actual viewport. Native SR has a 0.10× stop margin to avoid toggling while resizing; GLSL still requires at least 1.3×. Color, model and target-FPS restrictions always apply.")
+                    Text("Limits use the source video's resolution and container frame rate. Super resolution also compares the current viewport scale against the source display size.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("A limit bypasses the selected effect and explains why in its status. It does not lower inference resolution or change your chosen model.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -145,6 +154,9 @@ struct PlayerSettings: View {
         }
     }
     private func numberBinding(_ key: String, default value: Double) -> Binding<Double> {
-        Binding(get: { model.number(key) ?? value }, set: { model.command(["set", key, String($0)]) })
+        Binding(get: { model.number(key) ?? value }, set: {
+            model.command(["set", key, String($0)])
+            model.telemetry.flush()
+        })
     }
 }

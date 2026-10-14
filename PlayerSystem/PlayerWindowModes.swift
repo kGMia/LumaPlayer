@@ -231,7 +231,7 @@ private struct MiniPlayerContent: View {
             .onChange(of: model.path) { reveal() }
             .onChange(of: model.autoHideControls) { reveal() }
             .onReceive(timer) { now in
-                if controlsVisible && !model.menuTracking && !model.systemMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
+                if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
                 }
             }
@@ -300,7 +300,7 @@ struct MiniTransport: View {
                 VStack(spacing: 5) {
                     Text(model.title).font(.caption).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 10) {
-                        PlaybackTimeline(model: model, scrubbing: $scrubbing, compact: true)
+                        PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing, compact: true)
                         MiniGlassButton(symbol: model.muted ? "speaker.slash" : "speaker.wave.2",
                                         title: model.muted ? "Unmute" : "Mute") { model.toggleMute() }
                     }

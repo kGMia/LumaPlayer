@@ -61,7 +61,13 @@ extension PlayerModel {
 
 struct VideoInformationHUD: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var telemetry: PlayerTelemetryState
+    init(model: PlayerModel) {
+        self.model = model
+        self.telemetry = model.telemetry
+    }
     var body: some View {
+        let _ = telemetry.snapshot.count
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Image(systemName: "film").foregroundStyle(.secondary)
@@ -90,7 +96,13 @@ struct VideoInformationHUD: View {
 
 struct VideoInformationRows: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var telemetry: PlayerTelemetryState
+    init(model: PlayerModel) {
+        self.model = model
+        self.telemetry = model.telemetry
+    }
     var body: some View {
+        let _ = telemetry.snapshot.count
         LabeledContent("Source", value: model.sourceDescription)
         LabeledContent("Source FPS (container)", value: model.fps("container-fps"))
         LabeledContent("Video codec / profile", value: model.sourceCodec)

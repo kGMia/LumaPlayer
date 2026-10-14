@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import AVFoundation
 
 /// Use the system glass renderer; respect the system's transparency preference.
 /// Do not attach `.interactive()` to the container background itself, otherwise clicking the
@@ -28,6 +29,86 @@ private struct TransportButtonStyle: ButtonStyle {
     }
 }
 
+/// Lightweight background thumbnail generator for timeline hover/scrub previews.
+/// Uses a single cached AVAssetImageGenerator for the current media file without touching libmpv.
+actor TimelinePreviewGenerator {
+    static let shared = TimelinePreviewGenerator()
+    private var activePath = ""
+    private var generator: AVAssetImageGenerator?
+    private var cache: [Int: CGImage] = [:]
+
+    func thumbnail(for path: String, at seconds: Double) async -> CGImage? {
+        guard !path.isEmpty, seconds.isFinite, seconds >= 0 else { return nil }
+        if path != activePath {
+            activePath = path
+            cache.removeAll(keepingCapacity: true)
+            let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+            let gen = AVAssetImageGenerator(asset: asset)
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 320, height: 180)
+            let tolerance = CMTime(seconds: 0.4, preferredTimescale: 600)
+            gen.requestedTimeToleranceBefore = tolerance
+            gen.requestedTimeToleranceAfter = tolerance
+            generator = gen
+        }
+        let bucket = Int((seconds * 2).rounded())
+        if let hit = cache[bucket] { return hit }
+        guard let gen = generator else { return nil }
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        guard let result = try? await gen.image(at: time) else { return nil }
+        if cache.count >= 96 { cache.removeAll(keepingCapacity: true) }
+        cache[bucket] = result.image
+        return result.image
+    }
+}
+
+private struct TimelinePreviewBubble: View {
+    let image: CGImage?
+    let timestamp: String
+    let chapter: String?
+    var compact = false
+    var body: some View {
+        let thumbW: CGFloat = compact ? 120 : 160
+        let thumbH: CGFloat = compact ? 68 : 90
+        VStack(spacing: 5) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.black.opacity(0.65))
+                if let image {
+                    Image(decorative: image, scale: 1.0)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: thumbW, height: thumbH)
+                        .clipped()
+                } else {
+                    Image(systemName: "film")
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .frame(width: thumbW, height: thumbH)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.16), lineWidth: 0.5))
+
+            if let chapter, !chapter.isEmpty {
+                Text(chapter)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+                    .frame(maxWidth: thumbW)
+            }
+            Text(timestamp)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(6)
+        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
+        .allowsHitTesting(false)
+    }
+}
+
 struct FloatingTransport: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
@@ -35,8 +116,10 @@ struct FloatingTransport: View {
     @Binding var scrubbing: Bool
     @Binding var settings: Bool
     var body: some View {
+        let queueActive = model.queuePopover || (model.inspector && !model.fullScreen && model.sidebarTab == "queue")
+        let settingsActive = settings || (model.inspector && !model.fullScreen && model.sidebarTab == "enhance")
         VStack(spacing: 12) {
-            PlaybackTimeline(model: model, scrubbing: $scrubbing)
+            PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing)
             HStack(spacing: 12) {
                 Button { model.skip(-1) } label: { Image(systemName: "gobackward") }
                     .accessibilityLabel("Back \(Int(model.seekSeconds)) seconds").help("Back \(Int(model.seekSeconds)) seconds (←)")
@@ -54,19 +137,25 @@ struct FloatingTransport: View {
                 }.accessibilityLabel(model.muted ? "Unmute" : "Mute").help("Mute (M)")
                 Slider(value: Binding(get: { model.volume }, set: { model.setVolume($0) }), in: 0...100)
                     .frame(width: 72).accessibilityLabel("Volume")
-                Button { model.showSidebar("queue") } label: { Image(systemName: "list.bullet") }
-                    .accessibilityLabel("Play Queue").help("Play Queue (⇧⌘P)")
-                    .popover(isPresented: $model.queuePopover, arrowEdge: .top) {
-                        QueueView(model: model).frame(width: 360, height: 420)
-                    }
+                Button { model.showSidebar("queue") } label: {
+                    Image(systemName: "list.bullet")
+                        .opacity(queueActive ? 1.0 : 0.78)
+                }
+                .accessibilityLabel("Play Queue").help("Play Queue (⇧⌘P)")
+                .popover(isPresented: $model.queuePopover, arrowEdge: .top) {
+                    QueueView(model: model).frame(width: 360, height: 420)
+                }
                 Button { model.showVideoInfo.toggle() } label: {
                     Image(systemName: model.showVideoInfo ? "info.circle.fill" : "info.circle")
                         .opacity(model.showVideoInfo ? 1.0 : 0.78)
                 }
                 .accessibilityLabel("Video information").help("Video information (⌘I)")
-                Button { model.queuePopover = false; settings.toggle() } label: { Image(systemName: "slider.horizontal.3") }
-                    .accessibilityLabel("Quick settings").help("Enhancement settings")
-                    .popover(isPresented: $settings, arrowEdge: .top) { QuickEnhancementSettings(model: model) }
+                Button { model.queuePopover = false; settings.toggle() } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .opacity(settingsActive ? 1.0 : 0.78)
+                }
+                .accessibilityLabel("Quick settings").help("Enhancement settings")
+                .popover(isPresented: $settings, arrowEdge: .top) { QuickEnhancementSettings(model: model) }
                 Button { model.toggleMiniPlayer() } label: { Image(systemName: model.miniPlayer ? "pip.exit" : "pip.enter") }
                     .accessibilityLabel("Mini Player").help("Mini Player (⌥⌘P)")
                     .disabled(model.windowTransition)
@@ -83,18 +172,32 @@ struct FloatingTransport: View {
 }
 
 /// Preview locally while dragging; send one exact seek on release. Shared by both window modes.
+/// Observes `PlayerTimelineState` independently so 4 Hz time updates only redraw the timeline bar.
 struct PlaybackTimeline: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var timeline: PlayerTimelineState
     @Binding var scrubbing: Bool
     var compact = false
     @State private var preview: Double?
-    private var limit: Double { model.duration.isFinite ? max(1, model.duration) : 1 }
+    @State private var hoverTime: Double?
+    @State private var hoverRatio = CGFloat(0)
+    @State private var sliderWidth = CGFloat(0)
+    @State private var previewImage: CGImage?
+    private var limit: Double { timeline.duration.isFinite ? max(1, timeline.duration) : 1 }
     private func bounded(_ value: Double) -> Double { value.isFinite ? min(limit, max(0, value)) : 0 }
+    private var activePreviewTime: Double? {
+        guard model.showTimelinePreview, model.loaded, timeline.duration > 0 else { return nil }
+        return preview ?? hoverTime
+    }
+    private var previewBucketKey: String {
+        guard let target = activePreviewTime, !model.path.isEmpty else { return "" }
+        return "\(model.path)#\(Int((target * 2).rounded()))"
+    }
     var body: some View {
         HStack(spacing: compact ? 6 : 10) {
-            Text(time(preview ?? model.position))
+            Text(time(preview ?? timeline.position))
                 .frame(minWidth: compact ? 34 : 50, alignment: .trailing)
-            Slider(value: Binding(get: { bounded(preview ?? model.position) }, set: { preview = bounded($0) }), in: 0...limit) { editing in
+            Slider(value: Binding(get: { bounded(preview ?? timeline.position) }, set: { preview = bounded($0) }), in: 0...limit) { editing in
                 // Keep the preview optional: touching the thumb without moving must not seek.
                 if editing { scrubbing = true }
                 else if scrubbing {
@@ -102,14 +205,70 @@ struct PlaybackTimeline: View {
                     if let preview { model.seek(bounded(preview)) }
                     preview = nil
                 }
-            }.controlSize(compact ? .small : .regular)
-                .focusEffectDisabled()
-                .accessibilityLabel("Playback position").disabled(!model.loaded || model.duration <= 0)
-            if !compact { Text(time(model.duration)).frame(minWidth: 50, alignment: .leading) }
-        }.font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.75))
-            .onChange(of: model.path) { scrubbing = false; preview = nil }
-            .onDisappear { scrubbing = false; preview = nil }
-            .help("\(time(model.position)) / \(time(model.duration)) · Drag to seek")
+            }
+            .controlSize(compact ? .small : .regular)
+            .focusEffectDisabled()
+            .accessibilityLabel("Playback position")
+            .disabled(!model.loaded || timeline.duration <= 0)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                if abs(sliderWidth - width) > 0.5 { sliderWidth = width }
+            }
+            .onContinuousHover { phase in
+                guard model.showTimelinePreview, model.loaded, timeline.duration > 0, sliderWidth > 16 else {
+                    if hoverTime != nil { hoverTime = nil }
+                    return
+                }
+                switch phase {
+                case .active(let location):
+                    let inset: CGFloat = 8
+                    let usable = max(1, sliderWidth - inset * 2)
+                    let ratio = min(1, max(0, (location.x - inset) / usable))
+                    hoverRatio = ratio
+                    hoverTime = bounded(Double(ratio) * limit)
+                case .ended:
+                    hoverTime = nil
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let targetTime = activePreviewTime, sliderWidth > 16 {
+                    let bubbleW: CGFloat = compact ? 132 : 172
+                    let ratio = preview != nil ? CGFloat(bounded(targetTime) / limit) : hoverRatio
+                    let rawX = ratio * sliderWidth - bubbleW * 0.5
+                    let clampedX = min(max(0, rawX), max(0, sliderWidth - bubbleW))
+                    TimelinePreviewBubble(
+                        image: previewImage,
+                        timestamp: time(targetTime),
+                        chapter: model.chapterTitle(at: targetTime),
+                        compact: compact
+                    )
+                    .offset(x: clampedX, y: compact ? -108 : -136)
+                }
+            }
+            if !compact { Text(time(timeline.duration)).frame(minWidth: 50, alignment: .leading) }
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.white.opacity(0.75))
+        .task(id: previewBucketKey) {
+            guard let target = activePreviewTime, !model.path.isEmpty else { return }
+            if let img = await TimelinePreviewGenerator.shared.thumbnail(for: model.path, at: target),
+               !Task.isCancelled {
+                previewImage = img
+            }
+        }
+        .onChange(of: model.path) {
+            scrubbing = false
+            preview = nil
+            hoverTime = nil
+            previewImage = nil
+        }
+        .onDisappear {
+            scrubbing = false
+            preview = nil
+            hoverTime = nil
+        }
+        .help("\(time(timeline.position)) / \(time(timeline.duration)) · Drag to seek")
     }
     private func time(_ value: Double) -> String {
         guard value.isFinite, value >= 0 else { return "--:--" }
@@ -155,6 +314,7 @@ struct QuickEnhancementSettings: View {
             Section("Enhancement") { EnhancementControls(model: model) }
             Section("Decoder") { DecoderSettings(model: model) }
             Toggle("Show Live Video Information", isOn: $model.showVideoInfo)
+            Toggle("Show Timeline Hover Preview", isOn: $model.showTimelinePreview)
             SettingsLink { Label("Open Settings…", systemImage: "gearshape") }
         }.formStyle(.grouped).frame(width: 360).fixedSize(horizontal: false, vertical: true)
             .background(.background)
@@ -227,10 +387,10 @@ struct NativePlayerMenu: NSViewRepresentable {
         return button
     }
     func updateNSView(_ view: NSPopUpButton, context: Context) {
-        // Update the next-open builder only, never mutate a menu being tracked.
+        // Update the next-open builder only, never mutate a menu or control being tracked.
         context.coordinator.parent = self
-        view.contentTintColor = .white
-        if !context.coordinator.tracking, let first = view.menu?.items.first {
+        guard !context.coordinator.tracking else { return }
+        if let first = view.menu?.items.first {
             context.coordinator.configureLabelItem(first)
         }
     }
@@ -333,6 +493,7 @@ extension PlayerModel {
         return [
             PlayerMenuEntry(title: miniPlayer ? "Restore Player" : "Mini Player", symbol: "pip", action: { self.toggleMiniPlayer() }),
             PlayerMenuEntry(title: "Play Queue", symbol: "list.bullet", action: { self.showSidebar("queue") }),
+            PlayerMenuEntry(title: "Timeline Hover Preview", symbol: "photo.on.rectangle.angled", selected: showTimelinePreview, action: { self.showTimelinePreview.toggle() }),
             PlayerMenuEntry(title: "Previous Video", symbol: "backward.end", enabled: canPrevious, action: { self.previousFile() }),
             PlayerMenuEntry(title: "Next Video", symbol: "forward.end", enabled: canNext, action: { self.nextFile() }),
             PlayerMenuEntry(title: "Chapters", symbol: "bookmark", children: chapterItems),

@@ -17,23 +17,12 @@ struct MediaChapter: Identifiable, Equatable {
 }
 
 extension PlayerModel {
-    var muted: Bool { snapshot["mute"] as? Bool ?? false }
-    var queue: [QueueItem] {
-        (snapshot["playlist"] as? [[String: Any]] ?? []).compactMap { item in
-            guard let id = item["id"] as? NSNumber, let filename = item["filename"] as? String else { return nil }
-            return QueueItem(id: id.int64Value, title: item["title"] as? String ?? URL(fileURLWithPath: filename).lastPathComponent,
-                             filename: filename, current: item["current"] as? Bool ?? false)
-        }
-    }
-    var chapters: [MediaChapter] {
-        (snapshot["chapter-list"] as? [[String: Any]] ?? []).enumerated().compactMap { index, item in
-            guard let time = item["time"] as? Double, time.isFinite, time >= 0 else { return nil }
-            return MediaChapter(id: index, title: item["title"] as? String ?? "Chapter \(index + 1)", time: time)
-        }
-    }
-    var queueIndex: Int { Int(number("playlist-pos") ?? -1) }
     var canPrevious: Bool { queueIndex > 0 }
     var canNext: Bool { queueIndex >= 0 && queueIndex + 1 < queue.count }
+    func chapterTitle(at seconds: Double) -> String? {
+        guard !chapters.isEmpty, seconds.isFinite, seconds >= 0 else { return nil }
+        return chapters.last(where: { $0.time <= seconds + 0.05 })?.title
+    }
     func previousFile() { guard canPrevious else { return }; cancelFolderScan(); savePosition(); command(["playlist-prev", "weak"]) }
     func nextFile() { guard canNext else { return }; cancelFolderScan(); savePosition(); command(["playlist-next", "weak"]) }
     func playQueueItem(_ id: Int64) {

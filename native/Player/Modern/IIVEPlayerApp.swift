@@ -84,6 +84,7 @@ struct PlayerViewCommands: Commands {
                 .keyboardShortcut("e", modifiers: [.command, .shift])
             Toggle("Video Information", isOn: Binding(get: { menu.showVideoInfo }, set: { model.showVideoInfo = $0 }))
                 .keyboardShortcut("i")
+            Toggle("Timeline Hover Preview", isOn: Binding(get: { menu.showTimelinePreview }, set: { model.showTimelinePreview = $0 }))
             Button(menu.fullScreen ? "Enhancement Settings" : "Sidebar") {
                 if menu.inspector && !menu.fullScreen { model.inspector = false }
                 else { model.showSidebar("enhance") }
