@@ -97,7 +97,7 @@ extension PlayerModel {
         guard loaded else { return }
         let delta = direction * (long ? longSeekSeconds : seekSeconds)
         seek(delta, relative: true)
-        osd.show(String(format: "%+.0fs", delta), symbol: delta >= 0 ? "goforward" : "gobackward")
+        osd.showSkip(delta: delta)
     }
     func changeVolume(_ direction: Double) {
         setVolume(min(100, max(0, volume + direction * volumeStep)), showOSD: true)

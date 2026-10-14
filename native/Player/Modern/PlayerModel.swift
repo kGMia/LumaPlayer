@@ -92,22 +92,52 @@ struct MediaTrack: Identifiable, Equatable {
     }
 }
 
-/// Lightweight transient OSD status toast state (e.g. Volume, Speed, Mute, Enhancement toggle).
+/// Lightweight transient OSD status toast state (e.g. Volume, Speed, Mute, cumulative Skip, Enhancement toggle).
 @MainActor final class PlayerOSDState: ObservableObject {
     @Published var symbol = ""
     @Published var text = ""
     @Published var visible = false
     private var dismissTask: Task<Void, Never>?
+    private var accumulatedSkip = 0.0
+    private var lastSkipUptime = 0.0
 
     func show(_ text: String, symbol: String) {
+        accumulatedSkip = 0
         self.symbol = symbol
         self.text = text
         if !visible { visible = true }
+        scheduleDismiss()
+    }
+
+    /// Accumulates consecutive fast-forward/rewind steps while the OSD toast remains active (e.g. +5s -> +10s -> +15s).
+    func showSkip(delta: Double) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if visible, now - lastSkipUptime < 1.35, accumulatedSkip != 0 {
+            accumulatedSkip += delta
+        } else {
+            accumulatedSkip = delta
+        }
+        lastSkipUptime = now
+        let total = Int(accumulatedSkip.rounded())
+        if total == 0 {
+            symbol = "clock.arrow.circlepath"
+            text = "0s"
+        } else {
+            let sign = total > 0 ? "+" : ""
+            symbol = total > 0 ? "goforward" : "gobackward"
+            text = "\(sign)\(total)s"
+        }
+        if !visible { visible = true }
+        scheduleDismiss()
+    }
+
+    private func scheduleDismiss() {
         dismissTask?.cancel()
         dismissTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(1250))
             guard !Task.isCancelled else { return }
             self?.visible = false
+            self?.accumulatedSkip = 0
         }
     }
 }
@@ -232,6 +262,51 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var colorProfile = UserDefaults.standard.string(forKey: "colorProfile") ?? "auto" {
         didSet { UserDefaults.standard.set(colorProfile, forKey: "colorProfile"); applyColorProfile() }
     }
+    @Published var chromeTheme = UserDefaults.standard.string(forKey: "chromeTheme") ?? "dark" {
+        didSet {
+            UserDefaults.standard.set(chromeTheme, forKey: "chromeTheme")
+            applyWindowAppearance()
+        }
+    }
+    @Published var adaptiveLightGlass = false {
+        didSet {
+            if oldValue != adaptiveLightGlass {
+                applyWindowAppearance()
+            }
+        }
+    }
+    private var lastLumaSampleTime = 0.0
+    private var lumaTask: Task<Void, Never>?
+
+    var effectiveChromeColorScheme: ColorScheme? {
+        switch chromeTheme {
+        case "system":
+            return nil
+        case "light":
+            return .light
+        case "adaptive":
+            return (loaded && adaptiveLightGlass) ? .light : .dark
+        default:
+            return .dark
+        }
+    }
+
+    func applyWindowAppearance() {
+        let appearance: NSAppearance?
+        switch chromeTheme {
+        case "system":
+            appearance = nil
+        case "light":
+            appearance = NSAppearance(named: .aqua)
+        case "adaptive":
+            appearance = NSAppearance(named: (loaded && adaptiveLightGlass) ? .aqua : .darkAqua)
+        default:
+            appearance = NSAppearance(named: .darkAqua)
+        }
+        window?.appearance = appearance
+        windowModes.applyAppearance(appearance)
+    }
+
     @Published var colorProfileStatus = "Automatic · source metadata"
     var colorProfileTask: Task<Void, Never>?
     var lastDecoderOption = ""
@@ -290,6 +365,7 @@ struct MediaTrack: Identifiable, Equatable {
     private var fileEpoch = ""
     private let defaults = UserDefaults.standard
     private var menuObservers: [NSObjectProtocol] = []
+    private var keyMonitor: Any?
 
     init() {
         sr = defaults.string(forKey: "sr") ?? "fsrcnnx_metal8"
@@ -321,6 +397,33 @@ struct MediaTrack: Identifiable, Equatable {
                 }
             }
         ]
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let keyCode = event.keyCode
+            let isRepeat = event.isARepeat
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.numericPad, .function, .capsLock])
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let self else { return false }
+                guard NSApp.modalWindow == nil, !self.isMenuTracking else { return false }
+                guard let keyWindow = NSApp.keyWindow,
+                      keyWindow === self.window || keyWindow === self.videoView?.window else {
+                    return false
+                }
+                if keyWindow.firstResponder is NSText {
+                    return false
+                }
+                // Spacebar (keyCode 49) with no modifiers: always toggle Play/Pause reliably
+                // even when controls are auto-hidden or a toolbar button holds focus.
+                if keyCode == 49 && mods.isEmpty {
+                    if !isRepeat {
+                        self.togglePause()
+                    }
+                    return true
+                }
+                return false
+            }
+            return handled ? nil : event
+        }
     }
     private func flushDeferredSnapshot() {
         guard !isMenuTracking else { return }
@@ -370,6 +473,7 @@ struct MediaTrack: Identifiable, Equatable {
         applyRepeat()
         applyPictureSettings()
         applyDecoder()
+        applyWindowAppearance()
         if let pending = pendingQueue { pendingQueue = nil; openFiles(pending.0, append: pending.1) }
         else if let pending = pendingOpen { pendingOpen = nil; open(pending.0, resume: pending.1) }
         else if !openedLaunchInput, let input = argument("--input") { openedLaunchInput = true; open(URL(fileURLWithPath: input), resume: false) }
@@ -422,8 +526,15 @@ struct MediaTrack: Identifiable, Equatable {
         if autoQueueFolder && scanFolder { enqueueFolder(around: url) }
     }
     func togglePause() {
-        if snapshot["eof-reached"] as? Bool == true { seek(0); command(["set", "pause", "no"]) }
-        else { command(["cycle", "pause"]) }
+        guard loaded || !path.isEmpty else { return }
+        let willPlay = paused || (snapshot["eof-reached"] as? Bool == true)
+        if snapshot["eof-reached"] as? Bool == true {
+            seek(0)
+            command(["set", "pause", "no"])
+        } else {
+            command(["cycle", "pause"])
+        }
+        osd.show(willPlay ? "Play" : "Pause", symbol: willPlay ? "play.fill" : "pause.fill")
     }
     func seek(_ value: Double, relative: Bool = false) {
         settledSamples = 0; command(["seek", String(value), relative ? "relative" : "absolute+exact"])
@@ -585,6 +696,22 @@ struct MediaTrack: Identifiable, Equatable {
             unverifiedSamples += 1
             if unverifiedSamples > 24 && !shaderFailed { shaderFailed = true }
         } else { unverifiedSamples = 0 }
+        if chromeTheme == "adaptive", loaded, !path.isEmpty, now - lastLumaSampleTime >= 2.0 {
+            lastLumaSampleTime = now
+            let samplePath = path
+            let sampleTime = nextPos
+            lumaTask?.cancel()
+            lumaTask = Task { @MainActor [weak self] in
+                guard let luma = await TimelinePreviewGenerator.shared.averageLuminance(for: samplePath, at: sampleTime),
+                      !Task.isCancelled, let self, self.path == samplePath else { return }
+                // Use hysteresis so borderline scenes never flicker between light and dark glass.
+                if self.adaptiveLightGlass {
+                    if luma < 0.56 { self.adaptiveLightGlass = false }
+                } else {
+                    if luma > 0.66 { self.adaptiveLightGlass = true }
+                }
+            }
+        }
         apply()
         menuState.sync(from: self)
         if now - lastSave > 10 { savePosition() }
@@ -676,7 +803,7 @@ struct MediaTrack: Identifiable, Equatable {
         saved = saved.filter { recent.contains($0.key) }
         defaults.set(saved, forKey: "positions")
     }
-    func shutdown() { queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; deferredSnapshot = nil; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); telemetry.reset(); timeline.reset(); loaded = false; muted = false; queue = []; chapters = []; queueIndex = -1; path = ""; title = "IIVE Player"; paused = true; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self) }
+    func shutdown() { queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); lumaTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; deferredSnapshot = nil; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); telemetry.reset(); timeline.reset(); loaded = false; adaptiveLightGlass = false; muted = false; queue = []; chapters = []; queueIndex = -1; path = ""; title = "IIVE Player"; paused = true; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self) }
 }
 private extension String { var nonempty: String? { isEmpty ? nil : self } }
 

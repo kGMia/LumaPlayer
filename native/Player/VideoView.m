@@ -36,6 +36,9 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
 - (BOOL)acceptsFirstMouse:(NSEvent *)event {
     return YES;
 }
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
 - (void)cancelPendingSingleClick {
     if(_pendingSingleClick) {
         dispatch_block_cancel(_pendingSingleClick);
@@ -43,6 +46,9 @@ static void update(void *ctx){dispatch_source_merge_data((__bridge dispatch_sour
     }
 }
 - (void)mouseDown:(NSEvent *)event {
+    if(self.window && self.window.firstResponder != self) {
+        [self.window makeFirstResponder:self];
+    }
     _mouseDownPoint=event.locationInWindow;
     _mouseDragged=NO;
     if(event.clickCount>=2) {

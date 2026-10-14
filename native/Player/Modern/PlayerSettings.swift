@@ -13,6 +13,13 @@ struct PlayerSettings: View {
         TabView {
             Form {
                 Section("Viewing") {
+                    Picker("Controls Theme", selection: $model.chromeTheme) {
+                        Text("Dark Glass").tag("dark")
+                        Text("Adaptive to Video").tag("adaptive")
+                        Text("System Theme").tag("system")
+                    }
+                    Text("Synchronizes the Liquid Glass appearance across the top window buttons, transport bar, sidebar, and fullscreen popovers.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Show Live Video Information", isOn: $model.showVideoInfo)
                     Text("Resolution, cadence, decoder, video codec and packet bitrate. Toggle at any time with ⌘I or the information button in the playback bar.")
                         .font(.caption).foregroundStyle(.secondary)

@@ -8,14 +8,14 @@ import AVFoundation
 struct PlaybackGlass: ViewModifier {
     var cornerRadius: CGFloat = 24
     @Environment(\.accessibilityReduceTransparency) private var opaque
+    @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if opaque {
             content.background(Color(nsColor: .windowBackgroundColor), in: shape)
         } else {
-            // A dark scrim keeps controls readable even over saturated video;
-            // OpenGL video does not always participate in system backdrop blur.
-            content.background(.black.opacity(0.55), in: shape)
+            let scrim = colorScheme == .light ? Color.white.opacity(0.18) : Color.black.opacity(0.28)
+            content.background(scrim, in: shape)
                 .glassEffect(.regular, in: shape)
         }
     }
@@ -117,7 +117,7 @@ struct CleanWhiteVolumeBar: View {
     }
 }
 
-/// Lightweight background thumbnail generator for timeline hover/scrub previews.
+/// Lightweight background thumbnail generator for timeline hover/scrub previews and adaptive glass luminance.
 /// Uses a single cached AVAssetImageGenerator for the current media file without touching libmpv.
 actor TimelinePreviewGenerator {
     static let shared = TimelinePreviewGenerator()
@@ -147,6 +147,35 @@ actor TimelinePreviewGenerator {
         if cache.count >= 96 { cache.removeAll(keepingCapacity: true) }
         cache[bucket] = result.image
         return result.image
+    }
+
+    func averageLuminance(for path: String, at seconds: Double) async -> Double? {
+        guard let cgImage = await thumbnail(for: path, at: seconds) else { return nil }
+        let sampleW = 16
+        let sampleH = 9
+        var pixels = [UInt8](repeating: 0, count: sampleW * sampleH * 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: sampleW,
+            height: sampleH,
+            bitsPerComponent: 8,
+            bytesPerRow: sampleW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.interpolationQuality = .low
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: sampleW, height: sampleH))
+        var totalLuma = 0.0
+        let count = sampleW * sampleH
+        for i in 0..<count {
+            let offset = i * 4
+            let r = Double(pixels[offset]) / 255.0
+            let g = Double(pixels[offset + 1]) / 255.0
+            let b = Double(pixels[offset + 2]) / 255.0
+            totalLuma += 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+        return totalLuma / Double(count)
     }
 }
 
@@ -386,7 +415,11 @@ struct FloatingTransport: View {
                 }
                 .accessibilityLabel("Play Queue").help("Play Queue (⇧⌘P)")
                 .popover(isPresented: $model.queuePopover, arrowEdge: .top) {
-                    QueueView(model: model).frame(width: 360, height: 420)
+                    QueueView(model: model)
+                        .frame(width: 360, height: 420)
+                        .background(Color.black.opacity(0.14))
+                        .presentationBackground(.ultraThinMaterial)
+                        .preferredColorScheme(model.effectiveChromeColorScheme)
                 }
                 Button { model.showVideoInfo.toggle() } label: {
                     Image(systemName: model.showVideoInfo ? "info.circle.fill" : "info.circle")
@@ -398,7 +431,11 @@ struct FloatingTransport: View {
                         .opacity(settingsActive ? 1.0 : 0.78)
                 }
                 .accessibilityLabel("Quick settings").help("Enhancement settings")
-                .popover(isPresented: $settings, arrowEdge: .top) { QuickEnhancementSettings(model: model) }
+                .popover(isPresented: $settings, arrowEdge: .top) {
+                    QuickEnhancementSettings(model: model)
+                        .presentationBackground(.ultraThinMaterial)
+                        .preferredColorScheme(model.effectiveChromeColorScheme)
+                }
                 Button { model.toggleMiniPlayer() } label: { Image(systemName: model.miniPlayer ? "pip.exit" : "pip.enter") }
                     .accessibilityLabel("Mini Player").help("Mini Player (⌥⌘P)")
                     .disabled(model.windowTransition)
@@ -603,11 +640,22 @@ struct QuickEnhancementSettings: View {
         Form {
             Section("Enhancement") { EnhancementControls(model: model) }
             Section("Decoder") { DecoderSettings(model: model) }
-            Toggle("Show Live Video Information", isOn: $model.showVideoInfo)
-            Toggle("Show Timeline Hover Preview", isOn: $model.showTimelinePreview)
-            SettingsLink { Label("Open Settings…", systemImage: "gearshape") }
-        }.formStyle(.grouped).frame(width: 360).fixedSize(horizontal: false, vertical: true)
-            .background(.background)
+            Section("Appearance") {
+                Picker("Controls Theme", selection: $model.chromeTheme) {
+                    Text("Dark Glass").tag("dark")
+                    Text("Adaptive to Video").tag("adaptive")
+                    Text("System Theme").tag("system")
+                }
+                Toggle("Show Live Video Information", isOn: $model.showVideoInfo)
+                Toggle("Show Timeline Hover Preview", isOn: $model.showTimelinePreview)
+                SettingsLink { Label("Open Settings…", systemImage: "gearshape") }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color.black.opacity(0.14))
     }
 }
 
@@ -629,6 +677,7 @@ struct PlayerWindowReader: NSViewRepresentable {
             DispatchQueue.main.async { [weak self, weak window] in
                 guard let model = self?.model, let window else { return }
                 model.window = window
+                model.applyWindowAppearance()
                 let isFS = window.styleMask.contains(.fullScreen)
                 model.fullScreen = isFS
                 window.toolbar?.isVisible = !isFS

@@ -92,6 +92,10 @@ import Combine
         guard let panel else { return }
         panel.level = model.miniAlwaysOnTop ? .floating : .normal
         panel.collectionBehavior = model.miniAllSpaces ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.fullScreenAuxiliary]
+        model.applyWindowAppearance()
+    }
+    func applyAppearance(_ appearance: NSAppearance?) {
+        panel?.appearance = appearance
     }
     /// Fade opacity only: avoid resizing the video or preparing enhancement graphs per animation frame.
     private func fade(_ model: PlayerModel, showing: NSWindow, hiding: NSWindow, completion: @escaping () -> Void) {
@@ -236,7 +240,7 @@ private struct MiniPlayerContent: View {
             }
         }
         .ignoresSafeArea()
-        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(model.effectiveChromeColorScheme)
         .onAppear {
             model.onMiniCanvasSingleClick = { toggleControls() }
         }
@@ -433,21 +437,14 @@ struct PlayerSidebar: View {
                 }
                 .formStyle(.grouped)
                 .scrollContentBackground(.hidden)
-                .foregroundStyle(.white)
                 .opacity(model.sidebarTab == "info" ? 1 : 0)
                 .allowsHitTesting(model.sidebarTab == "info")
                 .accessibilityHidden(model.sidebarTab != "info")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(white: 0.11, opacity: 0.90))
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 18, x: -4, y: 6)
-        .environment(\.colorScheme, .dark)
+        .modifier(PlaybackGlass(cornerRadius: 20))
+        .shadow(color: .black.opacity(0.38), radius: 18, x: -4, y: 6)
+        .preferredColorScheme(model.effectiveChromeColorScheme)
     }
 }

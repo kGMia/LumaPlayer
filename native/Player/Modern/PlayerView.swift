@@ -148,7 +148,6 @@ struct PlayerView: View {
                     }
                 }
                 .padding(model.miniPlayer ? 10 : 20)
-                .environment(\.colorScheme, .dark)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -260,7 +259,8 @@ struct PlayerView: View {
             }
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .toolbarColorScheme(.dark, for: .windowToolbar)
+        .toolbarColorScheme(model.effectiveChromeColorScheme, for: .windowToolbar)
+        .preferredColorScheme(model.effectiveChromeColorScheme)
         .toolbar(model.fullScreen ? .hidden : .automatic, for: .windowToolbar)
         .dropDestination(for: URL.self) { urls, _ in
             guard !urls.isEmpty else { return false }; model.openFiles(urls); return true
