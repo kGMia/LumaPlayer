@@ -65,14 +65,21 @@ static void clear_engine(struct engine *e, bool destroy) {
 }
 static bool supported(struct mp_image *img, bool fi) {
     return img->w>0 && img->h>0 && !(img->w%2) && !(img->h%2) &&
-        !(img->fmt.flags & MP_IMGFLAG_HWACCEL) &&
-        img->params.color.primaries==PL_COLOR_PRIM_BT_709 &&
-        img->params.color.transfer==PL_COLOR_TRC_BT_1886 &&
+        (img->params.color.primaries==PL_COLOR_PRIM_BT_709 ||
+         img->params.color.primaries==PL_COLOR_PRIM_DISPLAY_P3 ||
+         img->params.color.primaries==PL_COLOR_PRIM_BT_2020 ||
+         img->params.color.primaries==PL_COLOR_PRIM_BT_601_525 ||
+         img->params.color.primaries==PL_COLOR_PRIM_BT_601_625 ||
+         img->params.color.primaries==PL_COLOR_PRIM_EBU_3213) &&
+        (img->params.color.transfer==PL_COLOR_TRC_BT_1886 ||
+         img->params.color.transfer==PL_COLOR_TRC_SRGB ||
+         img->params.color.transfer==PL_COLOR_TRC_GAMMA22 ||
+         img->params.color.transfer==PL_COLOR_TRC_GAMMA28) &&
         img->params.repr.sys!=PL_COLOR_SYSTEM_DOLBYVISION && !img->params.rotate &&
         img->pts!=MP_NOPTS_VALUE && isfinite(img->pts) &&
-        img->nominal_fps>0 && (!fi || img->nominal_fps<=30.01) && mp_sws_supported_format(img->imgfmt);
+        img->nominal_fps>0 && (!fi || img->nominal_fps<=30.01) && iive_surface_supported_input(img);
 }
-// swscale writes directly into pooled IOSurface NV12; no BGRA staging copy.
+// Zero-copy IOSurface acquisition for VT hwdec and upstream filters; swscale fallback into pooled NV12.
 static CVPixelBufferRef convert_input(struct engine *e, struct mp_image *img) {
     CVPixelBufferRef shared=iive_surface_acquire(img);
     if(shared){e->shared_inputs++;e->input_surface="shared-iosurface";return shared;}
@@ -85,7 +92,7 @@ static CVPixelBufferRef convert_input(struct engine *e, struct mp_image *img) {
     view.params.chroma_location=PL_CHROMA_CENTER;
     view.params.repr.sys=PL_COLOR_SYSTEM_BT_709;view.params.repr.levels=PL_COLOR_LEVELS_LIMITED;
     for(int i=0;i<2;i++){view.planes[i]=CVPixelBufferGetBaseAddressOfPlane(pixels,i);view.stride[i]=CVPixelBufferGetBytesPerRowOfPlane(pixels,i);}
-    int result=mp_sws_scale(e->sws,&view,img);mp_image_unref_data(&view);
+    int result=iive_surface_scale_input(e->sws,&view,img);mp_image_unref_data(&view);
     CVPixelBufferUnlockBaseAddress(pixels,0);
     if(result<0){CVPixelBufferRelease(pixels);return NULL;}
     CVBufferSetAttachment(pixels,kCVImageBufferYCbCrMatrixKey,kCVImageBufferYCbCrMatrix_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);

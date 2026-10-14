@@ -110,10 +110,7 @@ private extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 extension PlayerModel {
     var effectiveDecoderOption: String {
         switch decoder {
-        case "auto":
-            // Native frame filters accept software-visible frames, not opaque VT frames.
-            let needsFrames = master && !fallback && (fi != "off" || sr == "apple" || sr.contains("metal"))
-            return needsFrames ? "auto-copy" : "auto"
+        case "auto": return "auto"
         case "videotoolbox-copy": return "videotoolbox-copy"
         default: return "no"
         }
@@ -215,7 +212,7 @@ struct DecoderSettings: View {
             Label("Hardware · Copy", systemImage: "square.on.square").tag("videotoolbox-copy")
         }
         Text(model.decoderExplanation).font(.caption).foregroundStyle(.secondary)
-        Text("Changes apply to the current video and are saved. Auto uses copy-back with native enhancement filters. Unsupported hardware formats fall back to software; changing modes may briefly interrupt decoding.")
+        Text("Changes apply to the current video and are saved. Auto shares zero-copy VideoToolbox IOSurfaces with native enhancement filters when supported. Unsupported hardware formats fall back automatically; changing modes may briefly interrupt decoding.")
             .font(.caption).foregroundStyle(.secondary)
     }
 }

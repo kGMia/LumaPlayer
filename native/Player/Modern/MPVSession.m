@@ -17,11 +17,19 @@ static id object(mpv_node *node) {
         default:return NSNull.null;
     }
 }
+static NSArray<NSString *> *observedKeys(void) {
+    return @[@"path",@"media-title",@"duration",@"pause",@"seeking",@"speed",@"volume",@"mute",
+             @"video-params",@"video-out-params",@"osd-dimensions",@"container-fps",@"track-list",
+             @"vf",@"eof-reached",@"hwdec-current",@"video-codec",@"playlist",@"playlist-pos",
+             @"chapter-list",@"chapter",@"audio-delay",@"sub-delay",@"sub-scale",@"video-rotate",
+             @"brightness",@"contrast",@"saturation",@"gamma",@"hue",@"hwdec",@"icc-profile-auto"];
+}
 @implementation MPVSession {
     mpv_handle *_mpv;
     VideoView *_view;
     dispatch_queue_t _queue;
     dispatch_source_t _timer;
+    NSMutableDictionary *_observed;
     NSString *_error;
     NSFileHandle *_metrics;
     BOOL _closed, _resumeAfterWarm;
@@ -39,6 +47,7 @@ static id object(mpv_node *node) {
 - (instancetype)initWithView:(VideoView *)view {
     if(!(self=[super init]))return nil;
     _view=view;_queue=dispatch_queue_create("org.iive.player.client",DISPATCH_QUEUE_SERIAL);
+    _observed=[NSMutableDictionary dictionary];
     _mpv=mpv_create();if(!_mpv)return nil;
     for(NSArray *pair in @[@[@"config",@"no"],@[@"vo",@"libmpv"],@[@"hwdec",@"no"],@[@"idle",@"yes"],@[@"keep-open",@"yes"],@[@"terminal",@"yes"],@[@"volume",@"50"]])mpv_set_option_string(_mpv,[pair[0] UTF8String],[pair[1] UTF8String]);
     NSArray *args=NSProcessInfo.processInfo.arguments;
@@ -49,6 +58,10 @@ static id object(mpv_node *node) {
     if(log!=NSNotFound&&log+1<args.count){int fd=open([args[log+1] fileSystemRepresentation],O_WRONLY|O_CREAT|O_EXCL,0600);if(fd>=0)_metrics=[[NSFileHandle alloc]initWithFileDescriptor:fd closeOnDealloc:YES];}
     if(mpv_initialize(_mpv)<0 || ![view startRenderer:_mpv]){mpv_terminate_destroy(_mpv);_mpv=NULL;return nil;}
     mpv_request_log_messages(_mpv,"warn");
+    for(NSString *key in observedKeys()) {
+        _observed[key]=[self property:key];
+        mpv_observe_property(_mpv,0,key.UTF8String,MPV_FORMAT_NODE);
+    }
     _timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,_queue);
     dispatch_source_set_timer(_timer,DISPATCH_TIME_NOW,NSEC_PER_SEC/4,NSEC_PER_MSEC*30);
     __weak MPVSession *weak=self;
@@ -87,6 +100,7 @@ static id object(mpv_node *node) {
             if(remove && [entry[@"current"] boolValue])return;
             if(!remove)self->_resumeAfterWarm=NO;
             [self send:@[remove?@"playlist-remove":@"playlist-play-index",@(i).stringValue]];
+            self->_observed[@"playlist"]=[self property:@"playlist"];
             [self poll];break;
         }
     });
@@ -110,6 +124,7 @@ static id object(mpv_node *node) {
             if([self send:@[@"playlist-move",@(source).stringValue,@(target).stringValue]]<0)break;
             id entry=live[source];[live removeObjectAtIndex:source];[live insertObject:entry atIndex:target];
         }
+        self->_observed[@"playlist"]=[self property:@"playlist"];
         [self poll];
     });
 }
@@ -135,6 +150,7 @@ static id object(mpv_node *node) {
                     }
                 }
             }
+            self->_observed[@"playlist"]=[self property:@"playlist"];
             [self poll];
         }
         dispatch_async(dispatch_get_main_queue(), ^{completion(added);});
@@ -151,6 +167,7 @@ static id object(mpv_node *node) {
         if((changed||shaderChanged)&&[paused isKindOfClass:NSNumber.class]&&![paused boolValue]) {
             self->_resumeAfterWarm=YES;self->_warmDeadline=NSProcessInfo.processInfo.systemUptime+20;
             [self send:@[@"set",@"pause",@"yes"]];
+            self->_observed[@"pause"]=@YES;
         }
         if(changed) {
             id current=[self property:@"vf"];
@@ -160,6 +177,7 @@ static id object(mpv_node *node) {
             }
             for(NSString *filter in filters)[self send:@[@"vf",@"add",filter]];
             self->_filters=[filters copy];self->_lastSpeed=0;
+            self->_observed[@"vf"]=[self property:@"vf"];
             id pts=[self property:@"time-pos"];
             if([pts isKindOfClass:NSNumber.class])[self send:@[@"seek",[pts stringValue],@"absolute+exact"]];
         }
@@ -188,16 +206,33 @@ static id object(mpv_node *node) {
     _resourceTime=now;_resources=sample;
     return sample;
 }
+- (void)drainEvents {
+    while(_mpv) {
+        mpv_event *e=mpv_wait_event(_mpv,0);
+        if(e->event_id==MPV_EVENT_NONE)break;
+        if(e->event_id==MPV_EVENT_LOG_MESSAGE) {
+            mpv_event_log_message *log=e->data;
+            if(log->log_level<=MPV_LOG_LEVEL_ERROR)_error=[NSString stringWithFormat:@"%s: %s",log->prefix,log->text];
+        } else if(e->event_id==MPV_EVENT_PROPERTY_CHANGE) {
+            mpv_event_property *prop=e->data;
+            if(prop && prop->name) {
+                _observed[@(prop->name)]=(prop->format==MPV_FORMAT_NODE && prop->data)?object((mpv_node *)prop->data):NSNull.null;
+            }
+        } else if(e->event_id==MPV_EVENT_SHUTDOWN) {
+            dispatch_async(dispatch_get_main_queue(),^{[NSApp terminate:nil];});
+            break;
+        }
+    }
+}
 - (void)poll {
     if(!_mpv)return;
-    while(1){mpv_event *e=mpv_wait_event(_mpv,0);if(e->event_id==MPV_EVENT_NONE)break;
-        if(e->event_id==MPV_EVENT_LOG_MESSAGE){mpv_event_log_message *log=e->data;if(log->log_level<=MPV_LOG_LEVEL_ERROR)_error=[NSString stringWithFormat:@"%s: %s",log->prefix,log->text];}
-        if(e->event_id==MPV_EVENT_SHUTDOWN){dispatch_async(dispatch_get_main_queue(),^{[NSApp terminate:nil];});break;}
-    }
+    [self drainEvents];
     NSMutableDictionary *s=[NSMutableDictionary dictionaryWithDictionary:[self resourceSnapshot]];
-    for(NSString *key in @[@"path",@"media-title",@"time-pos",@"duration",@"pause",@"seeking",@"speed",@"volume",@"mute",@"video-params",@"video-out-params",@"osd-dimensions",@"container-fps",@"estimated-vf-fps",@"frame-drop-count",@"avsync",@"track-list",@"vf",@"eof-reached",@"hwdec-current",@"video-codec",@"video-bitrate",@"audio-bitrate",@"playlist",@"playlist-pos",@"chapter-list",@"chapter",@"audio-delay",@"sub-delay",@"sub-scale",@"video-rotate",@"brightness",@"contrast",@"saturation",@"gamma",@"hue",@"hwdec",@"icc-profile-auto"])
+    [s addEntriesFromDictionary:_observed];
+    for(NSString *key in @[@"time-pos",@"estimated-vf-fps",@"frame-drop-count",@"avsync",@"video-bitrate",@"audio-bitrate"])
         s[key]=[self property:key];
-    for(NSString *label in @[@"iive-rife",@"iive-fi",@"iive-sr"])s[label]=[self property:[@"vf-metadata/" stringByAppendingString:label]];
+    for(NSString *label in @[@"iive-rife",@"iive-fi",@"iive-sr"])
+        s[label]=_filters.count?[self property:[@"vf-metadata/" stringByAppendingString:label]]:NSNull.null;
     id passes=_shader?[self property:@"vo-passes"]:nil;
     // Pass descriptions prove shader execution; omit large GPU sample histories.
     NSMutableArray *descriptions=[NSMutableArray array];
@@ -228,7 +263,7 @@ static id object(mpv_node *node) {
             id meta=s[label];
             if(![meta isKindOfClass:NSDictionary.class] || !meta[@"state"] || [meta[@"state"] isEqual:@"warming"])ready=NO;
         }
-        if(ready || now>_warmDeadline){[self send:@[@"set",@"pause",@"no"]];_resumeAfterWarm=NO;}
+        if(ready || now>_warmDeadline){[self send:@[@"set",@"pause",@"no"]];_observed[@"pause"]=@NO;_resumeAfterWarm=NO;}
     }
     if(_metrics){NSData *json=[NSJSONSerialization dataWithJSONObject:s options:NSJSONWritingSortedKeys error:nil];if(json){[_metrics writeData:json];[_metrics writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];}}
     dispatch_async(dispatch_get_main_queue(),^{if(!self->_closed&&self.onSnapshot)self.onSnapshot(s);});

@@ -31,6 +31,8 @@ struct engine {
     struct mp_image *previous;
     int width, height, bad, pairs;
     bool fallback, nv12, native_output;
+    uint64_t shared_inputs, copied_inputs;
+    const char *input_surface;
     const char *state;
 };
 struct priv {
@@ -43,8 +45,8 @@ struct priv {
     struct batch ready;
     uint64_t generation, job_generation, emitted, generated, stale;
     double speed, job_speed, last_ms, total_ms, peak_ms;
-    uint64_t jobs;
-    const char *state, *input_path, *output_path;
+    uint64_t jobs, shared_inputs, copied_inputs;
+    const char *state, *input_path, *output_path, *input_surface;
 };
 static double seconds(void) {struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec/1e9;}
 static void discard(struct batch *b) {for(int i=0;i<b->count;i++)mp_frame_unref(&b->frames[i]);memset(b,0,sizeof(*b));}
@@ -61,7 +63,6 @@ static void clear_engine(struct engine *e, bool destroy) {
 static bool supported(struct mp_image *img, int fps)
 {
     return img->w > 0 && img->h > 0 && img->w <= 4096 && img->h <= 4096 &&
-        !(img->fmt.flags & MP_IMGFLAG_HWACCEL) &&
         (img->params.color.primaries == PL_COLOR_PRIM_BT_709 ||
          img->params.color.primaries == PL_COLOR_PRIM_DISPLAY_P3 ||
          img->params.color.primaries == PL_COLOR_PRIM_BT_2020 ||
@@ -75,13 +76,17 @@ static bool supported(struct mp_image *img, int fps)
         img->params.repr.sys != PL_COLOR_SYSTEM_DOLBYVISION &&
         img->pts != MP_NOPTS_VALUE && isfinite(img->pts) &&
         img->nominal_fps > 0 && img->nominal_fps < fps &&
-        !img->params.rotate && mp_sws_supported_format(img->imgfmt);
+        !img->params.rotate && iive_surface_supported_input(img);
 }
 
-// Software decoding still requires a layout copy into an IOSurface pool.
-// The NV12 route avoids BGRA staging and lets Metal write the FP16 input tensor.
+// Zero-copy IOSurface acquisition for VT hwdec and upstream filters; swscale fallback into pooled NV12/BGRA.
 static CVPixelBufferRef convert_input(struct engine *p, struct mp_image *img)
 {
+    if(p->nv12) {
+        CVPixelBufferRef shared=iive_surface_acquire(img);
+        if(shared){p->shared_inputs++;p->input_surface="shared-iosurface";return shared;}
+    }
+    p->copied_inputs++;p->input_surface="swscale-copy";
     if(!p->input_pool) {
         int w=img->w,h=img->h,format=p->nv12?kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:kCVPixelFormatType_32BGRA;
         CFNumberRef width=CFNumberCreate(NULL,kCFNumberIntType,&w);
@@ -109,7 +114,7 @@ static CVPixelBufferRef convert_input(struct engine *p, struct mp_image *img)
         CVBufferSetAttachment(buffer,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(buffer,kCVImageBufferTransferFunctionKey,kCVImageBufferTransferFunction_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
     }else{view.planes[0]=CVPixelBufferGetBaseAddress(buffer);view.stride[0]=CVPixelBufferGetBytesPerRow(buffer);}
-    int result=mp_sws_scale(p->sws,&view,img);mp_image_unref_data(&view);
+    int result=iive_surface_scale_input(p->sws,&view,img);mp_image_unref_data(&view);
     CVPixelBufferUnlockBaseAddress(buffer,0);
     if(result<0){CVPixelBufferRelease(buffer);return NULL;}return buffer;
 }
@@ -152,7 +157,14 @@ static bool drain(struct engine *e, struct batch *b, struct mp_image *attributes
     return true;
 }
 static void tail(struct engine *e, struct batch *b) {
-    if(e->previous){append(b,(struct mp_frame){MP_FRAME_VIDEO,e->previous},false);e->previous=NULL;}
+    if(e->previous){
+        struct mp_image *out=e->previous;
+        if(out->imgfmt==IMGFMT_VIDEOTOOLBOX && out->planes[3]){
+            struct mp_image *wrapped=iive_surface_wrap(CVPixelBufferRetain((CVPixelBufferRef)out->planes[3]),out);
+            if(wrapped){talloc_free(out);out=wrapped;}
+        }
+        append(b,(struct mp_frame){MP_FRAME_VIDEO,out},false);e->previous=NULL;
+    }
 }
 // Owns frame and all engine resources. Called exclusively by the worker.
 static void run_job(struct engine *e, const struct opts *o, struct mp_frame frame,
@@ -234,7 +246,9 @@ static void *worker(void *arg)
         p->busy=false;
         if(generation!=p->generation || p->stop){p->stale++;discard(&b);}
         else {
-            p->ready=b;p->state=e.state;p->output_path=e.native_output?"nv12-metal":"bgra-convert";p->input_path=e.nv12?"nv12-metal":"bgra-cpu";p->last_ms=ms;p->total_ms+=ms;
+            p->ready=b;p->state=e.state;p->output_path=e.native_output?"nv12-metal":"bgra-convert";p->input_path=e.nv12?"nv12-metal":"bgra-cpu";
+            p->shared_inputs=e.shared_inputs;p->copied_inputs=e.copied_inputs;p->input_surface=e.input_surface;
+            p->last_ms=ms;p->total_ms+=ms;
             p->peak_ms=fmax(p->peak_ms,ms);p->jobs++;
         }
         mp_filter_wakeup(f);
@@ -284,6 +298,9 @@ static bool command(struct mp_filter *f, struct mp_filter_command *cmd)
     mp_tags_set_str(tags,"state",p->state);
     mp_tags_set_str(tags,"input_path",p->input_path?p->input_path:"pending");
     mp_tags_set_str(tags,"output_path",p->output_path?p->output_path:"pending");
+    mp_tags_set_str(tags,"input_surface",p->input_surface?p->input_surface:"pending");
+    mp_tags_set_str(tags,"shared_inputs",mp_tprintf(32,"%llu",(unsigned long long)p->shared_inputs));
+    mp_tags_set_str(tags,"copied_inputs",mp_tprintf(32,"%llu",(unsigned long long)p->copied_inputs));
     mp_tags_set_str(tags,"generated",mp_tprintf(32,"%llu",(unsigned long long)p->generated));
     mp_tags_set_str(tags,"emitted",mp_tprintf(32,"%llu",(unsigned long long)p->emitted));
     mp_tags_set_str(tags,"generation",mp_tprintf(32,"%llu",(unsigned long long)p->generation));
