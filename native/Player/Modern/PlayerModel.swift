@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import Observation
 import UniformTypeIdentifiers
 
 struct MediaTrack: Identifiable, Equatable {
@@ -7,40 +8,51 @@ struct MediaTrack: Identifiable, Equatable {
     let title: String
 }
 
-/// High-frequency timeline progress state (4 Hz), observed only by `PlaybackTimeline`.
-/// Decouples `PlayerView`, `.toolbar`, and `.commands` from playback time ticks.
-@MainActor final class PlayerTimelineState: ObservableObject {
-    @Published var position = 0.0
-    @Published var duration = 0.0
-
-    func update(position nextPosition: Double, duration nextDuration: Double) {
-        if abs(position - nextPosition) > 0.001 { position = nextPosition }
-        if abs(duration - nextDuration) > 0.001 { duration = nextDuration }
-    }
-    func reset() {
-        if position != 0 { position = 0 }
-        if duration != 0 { duration = 0 }
-    }
-}
-
-/// High-frequency HUD and Inspector telemetry state (4 Hz), observed only by
-/// `VideoInformationHUD`, `VideoInformationRows`, and `EnhancementInspector`.
-@MainActor final class PlayerTelemetryState: ObservableObject {
+/// High-frequency HUD and Inspector telemetry state (4 Hz), observed via Swift `Observation`
+/// only by `VideoInformationHUD`, `VideoInformationRows`, and `EnhancementInspector`.
+@MainActor final class PlayerTelemetryState: Observation.Observable {
+    private let _$observationRegistrar = Observation.ObservationRegistrar()
     var raw: [String: Any] = [:]
-    @Published private(set) var snapshot: [String: Any] = [:]
+    private var _snapshot: [String: Any] = [:]
+    private var _revision: UInt64 = 0
+
+    var snapshot: [String: Any] {
+        _$observationRegistrar.access(self, keyPath: \.snapshot)
+        return _snapshot
+    }
+
+    var revision: UInt64 {
+        _$observationRegistrar.access(self, keyPath: \.revision)
+        return _revision
+    }
 
     func update(_ value: [String: Any], visible: Bool) {
         raw = value
         if visible {
-            snapshot = value
+            _$observationRegistrar.withMutation(of: self, keyPath: \.snapshot) {
+                _snapshot = value
+            }
+            _$observationRegistrar.withMutation(of: self, keyPath: \.revision) {
+                _revision &+= 1
+            }
         }
     }
     func flush() {
-        snapshot = raw
+        _$observationRegistrar.withMutation(of: self, keyPath: \.snapshot) {
+            _snapshot = raw
+        }
+        _$observationRegistrar.withMutation(of: self, keyPath: \.revision) {
+            _revision &+= 1
+        }
     }
     func reset() {
         raw = [:]
-        snapshot = [:]
+        _$observationRegistrar.withMutation(of: self, keyPath: \.snapshot) {
+            _snapshot = [:]
+        }
+        _$observationRegistrar.withMutation(of: self, keyPath: \.revision) {
+            _revision &+= 1
+        }
     }
 }
 
@@ -86,20 +98,62 @@ struct MediaTrack: Identifiable, Equatable {
         if longSeekSeconds != model.longSeekSeconds { longSeekSeconds = model.longSeekSeconds }
         if recent != model.recent { recent = model.recent }
         let nextChapters = model.chapters
-        if chapters != nextChapters { chapters = nextChapters }
+        let orderedChapters = nextChapters.sorted { $0.time < $1.time }
+        if chapters != orderedChapters { chapters = orderedChapters }
         let hasModal = NSApp?.modalWindow != nil
         if modalPanelActive != hasModal { modalPanelActive = hasModal }
     }
 }
 
-/// Lightweight transient OSD status toast state (e.g. Volume, Speed, Mute, cumulative Skip, Enhancement toggle).
-@MainActor final class PlayerOSDState: ObservableObject {
-    @Published var symbol = ""
-    @Published var text = ""
-    @Published var visible = false
+/// Lightweight transient OSD status toast state (e.g. Volume, Speed, Mute, cumulative Skip, Enhancement toggle),
+/// migrated to Swift `Observation` for per-property tracking in `OSDToastView`.
+@MainActor final class PlayerOSDState: Observation.Observable {
+    private let _$observationRegistrar = Observation.ObservationRegistrar()
+    private var _symbol = ""
+    private var _text = ""
+    private var _visible = false
     private var dismissTask: Task<Void, Never>?
     private var accumulatedSkip = 0.0
     private var lastSkipUptime = 0.0
+
+    var symbol: String {
+        get {
+            _$observationRegistrar.access(self, keyPath: \.symbol)
+            return _symbol
+        }
+        set {
+            guard _symbol != newValue else { return }
+            _$observationRegistrar.withMutation(of: self, keyPath: \.symbol) {
+                _symbol = newValue
+            }
+        }
+    }
+
+    var text: String {
+        get {
+            _$observationRegistrar.access(self, keyPath: \.text)
+            return _text
+        }
+        set {
+            guard _text != newValue else { return }
+            _$observationRegistrar.withMutation(of: self, keyPath: \.text) {
+                _text = newValue
+            }
+        }
+    }
+
+    var visible: Bool {
+        get {
+            _$observationRegistrar.access(self, keyPath: \.visible)
+            return _visible
+        }
+        set {
+            guard _visible != newValue else { return }
+            _$observationRegistrar.withMutation(of: self, keyPath: \.visible) {
+                _visible = newValue
+            }
+        }
+    }
 
     func show(_ text: String, symbol: String) {
         accumulatedSkip = 0
@@ -144,12 +198,31 @@ struct MediaTrack: Identifiable, Equatable {
 
 @MainActor final class PlayerModel: ObservableObject {
     let menuState = PlayerMenuState()
+    let nowPlaying = PlayerNowPlayingController()
     let timeline = PlayerTimelineState()
+    let timelinePreviews = TimelinePreviewGenerator()
+    private var seekPreviewTask: Task<Void, Never>?
     let telemetry = PlayerTelemetryState()
     let osd = PlayerOSDState()
+    let liveCaptions = LiveCaptionController()
 
     @Published var title = "IIVE Player"
-    @Published var path = "" { didSet { menuState.sync(from: self) } }
+    @Published var path = "" {
+        didSet {
+            if path != oldValue {
+                seekPreviewTask?.cancel(); seekPreviewTask = nil
+                let previous = oldValue, previews = timelinePreviews
+                Task { await previews.cancel(for: previous) }
+                frameActions.loadMarkers()
+            }
+            menuState.sync(from: self)
+        }
+    }
+    lazy var frameActions = FrameActions(model: self)
+    @Published var markers: [PlaybackMarker] = []
+    @Published var screenshotFolder = UserDefaults.standard.string(forKey: "screenshotFolder") ?? "" {
+        didSet { UserDefaults.standard.set(screenshotFolder, forKey: "screenshotFolder") }
+    }
     @Published var paused = true { didSet { menuState.sync(from: self) } }
     var position: Double { timeline.position }
     var duration: Double { timeline.duration }
@@ -167,6 +240,30 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var tier: String { didSet { if preferencesReady { configure() } } }
     @Published var targetFPS: Int { didSet { if preferencesReady { configure() } } }
     @Published var automatic: Bool { didSet { if preferencesReady { configure() } } }
+    @Published var srCompare = false {
+        didSet {
+            guard oldValue != srCompare else { return }
+            let ratio = srCompare ? srSplitRatio : 0.0
+            command(["vf-command", "iive-sr", "split", String(format: "%.4f", ratio)])
+            apply()
+            osd.show(srCompare ? "SR Split Compare On" : "SR Split Compare Off", symbol: "rectangle.split.2x1")
+        }
+    }
+    @Published var srSplitRatio = 0.5 {
+        didSet {
+            let clamped = min(0.95, max(0.05, srSplitRatio))
+            if abs(clamped - srSplitRatio) > 0.0001 {
+                srSplitRatio = clamped
+                return
+            }
+            if srCompare {
+                command(["vf-command", "iive-sr", "split", String(format: "%.4f", srSplitRatio)])
+            }
+        }
+    }
+    var isSRSplitActive: Bool {
+        srCompare && master && !fallback && loaded && !miniPlayer && sr.hasPrefix("fsrcnnx") && nativeSRColorSupported && srScaleEligible
+    }
     private var preferencesReady = false
     // Read bounded preferences so manually edited defaults cannot disable safeguards.
     @Published var seekSeconds = preference("seekSeconds", default: 5, range: 1...120) {
@@ -255,6 +352,9 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var rotation = UserDefaults.standard.integer(forKey: "videoRotation") {
         didSet { UserDefaults.standard.set(rotation, forKey: "videoRotation"); command(["set", "video-rotate", String(rotation)]) }
     }
+    @Published var dolbyVisionMapping = UserDefaults.standard.object(forKey: "dolbyVisionMapping") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(dolbyVisionMapping, forKey: "dolbyVisionMapping"); apply() }
+    }
     @Published var brightness = preference("brightness", default: 0, range: -100...100) { didSet { setPictureValue("brightness", brightness) } }
     @Published var contrast = preference("contrast", default: 0, range: -100...100) { didSet { setPictureValue("contrast", contrast) } }
     @Published var saturation = preference("saturation", default: 0, range: -100...100) { didSet { setPictureValue("saturation", saturation) } }
@@ -266,6 +366,7 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var chromeTheme = UserDefaults.standard.string(forKey: "chromeTheme") ?? "dark" {
         didSet {
             UserDefaults.standard.set(chromeTheme, forKey: "chromeTheme")
+            videoView?.setLuminanceSamplingEnabled(chromeTheme == "adaptive")
             applyWindowAppearance()
         }
     }
@@ -276,8 +377,6 @@ struct MediaTrack: Identifiable, Equatable {
             }
         }
     }
-    private var lastLumaSampleTime = 0.0
-    private var lumaTask: Task<Void, Never>?
 
     var effectiveChromeColorScheme: ColorScheme? {
         switch chromeTheme {
@@ -347,7 +446,33 @@ struct MediaTrack: Identifiable, Equatable {
     @Published var subtitles: [MediaTrack] = []
     @Published var audioID = "no"
     @Published var subtitleID = "no"
+    @Published var secondarySubtitleID = "no"
+    @Published var liveCaptionPlacement = "off"
+    @Published var captionLanguage = UserDefaults.standard.string(forKey: "captionLanguage") ?? "en-US" {
+        didSet { defaults.set(captionLanguage, forKey: "captionLanguage"); updateLiveCaptions() }
+    }
+    func updateLiveCaptions(download: Bool = false) {
+        liveCaptions.update(session: session, path: path, audio: audioID, language: captionLanguage,
+            enabled: liveCaptionPlacement != "off", position: position - (number("audio-delay") ?? 0), paused: paused,
+            seeking: snapshot["seeking"] as? Bool == true, download: download)
+    }
+    func selectSubtitle(_ id: String, secondary: Bool) {
+        let placement = secondary ? "top" : "bottom"
+        if id == "live" {
+            liveCaptionPlacement = placement
+            command(["set", secondary ? "secondary-sid" : "sid", "no"])
+        } else {
+            if liveCaptionPlacement == placement { liveCaptionPlacement = "off" }
+            // One embedded/external track cannot occupy both native slots.
+            if id != "no", id == (secondary ? subtitleID : secondarySubtitleID) {
+                command(["set", secondary ? "sid" : "secondary-sid", "no"])
+            }
+            command(["set", secondary ? "secondary-sid" : "sid", id])
+        }
+        updateLiveCaptions()
+    }
     @Published var fallback = false
+    @Published var enhancementWarming = false
     weak var videoView: VideoView?
     var onCanvasSingleClick: (() -> Void)?
     var onMiniCanvasSingleClick: (() -> Void)?
@@ -383,6 +508,7 @@ struct MediaTrack: Identifiable, Equatable {
         if let value = argument("--fi"), ["off", "rife", "apple"].contains(value) { fi = value }
         preferencesReady = true
         menuState.sync(from: self)
+        nowPlaying.bind(to: self)
         let center = NotificationCenter.default
         menuObservers = [
             center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
@@ -446,6 +572,13 @@ struct MediaTrack: Identifiable, Equatable {
             shutdown()
         }
         videoView = view
+        view.contextMenuProvider = { [weak self] in
+            // AppKit requests menus on its main thread. Keep the non-Sendable
+            // NSMenu inside this synchronous callback, not an actor return value.
+            var menu: NSMenu?
+            MainActor.assumeIsolated { menu = self?.frameActions.menu() }
+            return menu
+        }
         view.onSingleClick = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -475,12 +608,21 @@ struct MediaTrack: Identifiable, Equatable {
         applyPictureSettings()
         applyDecoder()
         applyWindowAppearance()
+        view.setLuminanceSamplingEnabled(chromeTheme == "adaptive")
         if let pending = pendingQueue { pendingQueue = nil; openFiles(pending.0, append: pending.1) }
         else if let pending = pendingOpen { pendingOpen = nil; open(pending.0, resume: pending.1) }
         else if !openedLaunchInput, let input = argument("--input") { openedLaunchInput = true; open(URL(fileURLWithPath: input), resume: false) }
     }
-    func command(_ args: [String]) { session?.command(args) }
-    func openPanel(subtitle: Bool = false, append: Bool = false) {
+    func command(_ args: [String]) {
+        // A new explicit navigation operation supersedes the held seek target.
+        let operation = args.first ?? ""
+        let replacingFile = operation == "loadfile" && (args.count < 3 || args[2] == "replace")
+        if replacingFile || ["stop", "frame-step", "frame-back-step", "playlist-next", "playlist-prev"].contains(operation) {
+            timeline.cancelSeek()
+        }
+        session?.command(args)
+    }
+    func openPanel(subtitle: Bool = false, append: Bool = false, secondary: Bool = false) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = !subtitle
         panel.title = subtitle ? "Load Subtitles" : append ? "Add to Play Queue" : "Open Videos"
         if subtitle { panel.allowedContentTypes = [.plainText, .item] }
@@ -490,7 +632,10 @@ struct MediaTrack: Identifiable, Equatable {
                 guard let self else { return }
                 self.menuState.modalPanelActive = NSApp?.modalWindow != nil
                 guard result == .OK, let url = panel.url else { return }
-                if subtitle { self.command(["sub-add", url.path, "select"]) }
+                if subtitle {
+                    if self.liveCaptionPlacement == (secondary ? "top" : "bottom") { self.liveCaptionPlacement = "off"; self.updateLiveCaptions() }
+                    self.session?.loadSubtitle(url.path, secondary: secondary)
+                }
                 else { self.openFiles(panel.urls, append: append) }
             }
         }
@@ -538,7 +683,24 @@ struct MediaTrack: Identifiable, Equatable {
         osd.show(willPlay ? "Play" : "Pause", symbol: willPlay ? "play.fill" : "pause.fill")
     }
     func seek(_ value: Double, relative: Bool = false) {
-        settledSamples = 0; command(["seek", String(value), relative ? "relative" : "absolute+exact"])
+        guard value.isFinite, let session, loaded else { return }
+        settledSamples = 0
+        if !relative, let request = timeline.beginSeek(to: value, path: path) {
+            session.seek(toSeconds: request.target, expectedPath: path, requestID: request.id)
+            nowPlaying.sync(from: self, forcePosition: request.target)
+            seekPreviewTask?.cancel()
+            if showTimelinePreview {
+                let mediaPath = path, allowSDR = sdr, previews = timelinePreviews
+                seekPreviewTask = Task {
+                    _ = await previews.thumbnail(for: mediaPath, at: request.target, allowSDRFallback: allowSDR)
+                }
+            }
+        } else {
+            timeline.cancelSeek()
+            command(["seek", String(value), relative ? "relative" : "absolute+exact"])
+            let estimated = relative ? max(0, min(duration, position + value)) : value
+            nowPlaying.sync(from: self, forcePosition: estimated)
+        }
     }
     func setVolume(_ value: Double, showOSD: Bool = false) {
         let clamped = min(100, max(0, value))
@@ -579,7 +741,11 @@ struct MediaTrack: Identifiable, Equatable {
     }
     func number(_ key: String) -> Double? { (telemetry.raw[key] as? NSNumber)?.doubleValue }
     var source: [String: Any] { telemetry.raw["video-params"] as? [String: Any] ?? [:] }
+    var nativeSRColorSupported: Bool {
+        !isDolbyVision && source["primaries"] as? String == "bt.709" && source["gamma"] as? String == "bt.1886"
+    }
     var sdr: Bool {
+        if isDolbyVision { return false }
         let prim = (source["primaries"] as? String)?.lowercased() ?? ""
         let gamma = (source["gamma"] as? String)?.lowercased() ?? ""
         let hdrGammas = ["pq", "hlg", "dovi", "smpte2084", "arib-std-b67"]
@@ -634,16 +800,27 @@ struct MediaTrack: Identifiable, Equatable {
             guard let time = item["time"] as? Double, time.isFinite, time >= 0 else { return nil }
             return MediaChapter(id: index, title: item["title"] as? String ?? "Chapter \(index + 1)", time: time)
         }
-        if chapters != nextChapters { chapters = nextChapters }
+        let orderedChapters = nextChapters.sorted { $0.time < $1.time }
+        if chapters != orderedChapters { chapters = orderedChapters }
 
         let nextTitle = value["media-title"] as? String ?? "IIVE Player"
         if title != nextTitle { title = nextTitle }
         if path != nextPath { path = nextPath }
         let nextPaused = value["pause"] as? Bool ?? true
         if paused != nextPaused { paused = nextPaused }
-        let nextPos = (value["time-pos"] as? NSNumber)?.doubleValue ?? 0
+        let nextWarming = value["enhancement-warming"] as? Bool ?? false
+        if enhancementWarming != nextWarming { enhancementWarming = nextWarming }
+        let nextPos = (value["time-pos"] as? NSNumber)?.doubleValue
         let nextDur = (value["duration"] as? NSNumber)?.doubleValue ?? 0
-        timeline.update(position: nextPos, duration: nextDur)
+        let seekOutcome = timeline.update(position: nextPos, duration: nextDur, path: nextPath,
+                                          seeking: value["seeking"] as? Bool == true,
+                                          requestID: value["iive-seek-request-id"] as? String,
+                                          commandResult: (value["iive-seek-command-result"] as? NSNumber)?.intValue,
+                                          speed: (value["speed"] as? NSNumber)?.doubleValue ?? 1)
+        if let seekOutcome {
+            osd.show(seekOutcome == .failed ? "Unable to seek to that position" : "Seek not confirmed · showing playback position",
+                     symbol: "exclamationmark.triangle")
+        }
 
         let nextVol = (value["volume"] as? NSNumber)?.doubleValue ?? 50
         if now - volumeAdjustedAt > 0.45 && abs(volume - nextVol) > 0.01 { volume = nextVol }
@@ -680,10 +857,19 @@ struct MediaTrack: Identifiable, Equatable {
         if subtitles != nextSubtitles { subtitles = nextSubtitles }
         let nextAudioID = tracks.first { $0["type"] as? String == "audio" && $0["selected"] as? Bool == true }.flatMap { ($0["id"] as? Int).map(String.init) } ?? "no"
         if audioID != nextAudioID { audioID = nextAudioID }
-        let nextSubtitleID = tracks.first { $0["type"] as? String == "sub" && $0["selected"] as? Bool == true }.flatMap { ($0["id"] as? Int).map(String.init) } ?? "no"
+        func selectedSubtitle(_ slot: Int) -> String {
+            tracks.first { $0["type"] as? String == "sub" && $0["selected"] as? Bool == true &&
+                ($0["main-selection"] as? Int ?? 0) == slot }.flatMap { ($0["id"] as? Int).map(String.init) } ?? "no"
+        }
+        let nextSubtitleID = selectedSubtitle(0)
+        let nextSecondaryID = selectedSubtitle(1)
+        if secondarySubtitleID != nextSecondaryID { secondarySubtitleID = nextSecondaryID }
         if subtitleID != nextSubtitleID { subtitleID = nextSubtitleID }
+        if liveCaptionPlacement == "bottom", nextSubtitleID != "no" { command(["set", "sid", "no"]) }
+        if liveCaptionPlacement == "top", nextSecondaryID != "no" { command(["set", "secondary-sid", "no"]) }
+        updateLiveCaptions()
         let drops = (value["frame-drop-count"] as? NSNumber)?.doubleValue ?? 0
-        if !paused && value["seeking"] as? Bool != true && loaded {
+        if !paused && value["seeking"] as? Bool != true && value["enhancement-warming"] as? Bool != true && loaded {
             settledSamples += 1
             if settledSamples > 25 && automatic && master {
                 let avsyncVal = (value["avsync"] as? NSNumber)?.doubleValue ?? 0
@@ -697,30 +883,26 @@ struct MediaTrack: Identifiable, Equatable {
             unverifiedSamples += 1
             if unverifiedSamples > 24 && !shaderFailed { shaderFailed = true }
         } else { unverifiedSamples = 0 }
-        if chromeTheme == "adaptive", loaded, !path.isEmpty, !liveResizing, now - lastLumaSampleTime >= 2.0 {
-            lastLumaSampleTime = now
-            let samplePath = path
-            let sampleTime = nextPos
-            lumaTask?.cancel()
-            lumaTask = Task { @MainActor [weak self] in
-                guard let luma = await TimelinePreviewGenerator.shared.averageLuminance(for: samplePath, at: sampleTime),
-                      !Task.isCancelled, let self, self.path == samplePath else { return }
-                // Use hysteresis so borderline scenes never flicker between light and dark glass.
-                if self.adaptiveLightGlass {
-                    if luma < 0.56 { self.adaptiveLightGlass = false }
-                } else {
-                    if luma > 0.66 { self.adaptiveLightGlass = true }
-                }
-            }
+        if chromeTheme == "adaptive", loaded, !liveResizing,
+           let luma = number("presentation-luminance"), luma.isFinite {
+            // Approximate brightness of the actual rendered canvas, including bars.
+            // Hysteresis keeps borderline scenes from flickering the glass appearance.
+            if adaptiveLightGlass {
+                if luma < 0.56 { adaptiveLightGlass = false }
+            } else if luma > 0.66 { adaptiveLightGlass = true }
         }
         apply()
         menuState.sync(from: self)
+        nowPlaying.sync(from: self)
         if now - lastSave > 10 { savePosition() }
     }
     func apply() {
         guard session != nil, !windowTransition, !liveResizing, ProcessInfo.processInfo.systemUptime >= enhancementPlanResumeAt else { return }
         applyDecoder()
         var filters: [String] = []; var shader: String?
+        if isDolbyVision && !dolbyVisionMapping {
+            filters.append("@iive-dovi-base:format=dolbyvision=no")
+        }
         let disabled = !master || fallback
         let base = disabled ? (fallback ? "Degraded · Retry to restore" : "Off") : !loaded ? "Waiting for video" : !sdr ? "Bypassed · HDR or unknown color metadata" : nil
         var nextFiStatus = fi == "off" ? "Off" : base ?? "Warming"
@@ -738,6 +920,8 @@ struct MediaTrack: Identifiable, Equatable {
                 if meta("iive-rife")["state"] == "active", let input = meta("iive-rife")["input_path"] {
                     nextFiStatus += input == "nv12-metal" ? (meta("iive-rife")["output_path"] == "nv12-metal" ? " · Metal NV12 in/out" : " · NV12 → Metal") : " · BGRA input"
                 }
+            } else if fi == "apple", !nativeSRColorSupported {
+                nextFiStatus = "Bypassed · Apple interpolation requires BT.709 / BT.1886 SDR"
             } else if fi == "apple", valueBool("apple-fi-supported"), fps > 0, fps <= 30.01 {
                 filters.append("@iive-fi:iive-apple=mode=fi:fallback=\(fallbackOption)")
                 nextFiStatus = state("iive-fi") + String(format: " · %.3g → %.3g fps", fps, fps * 2)
@@ -751,11 +935,16 @@ struct MediaTrack: Identifiable, Equatable {
             let srWithinLimits = srMaximumHeight == 0 || sourceHeight <= srMaximumHeight
             if sr != "off" && !srWithinLimits { nextSrStatus = "Bypassed · source exceeds super resolution limit" }
             else if sr != "off" && !srScaleEligible { nextSrStatus = "Bypassed · below upscaling threshold" }
-            else if sr.contains("metal") {
-                let model = sr == "fsrcnnx_metal16" ? "quality" : "fast"
+            else if (sr.contains("metal") || sr == "apple" || (srCompare && sr.hasPrefix("fsrcnnx"))) && !nativeSRColorSupported {
+                nextSrStatus = "Bypassed · native SR requires BT.709 / BT.1886 SDR"
+            }
+            else if sr.contains("metal") || (srCompare && sr.hasPrefix("fsrcnnx")) {
+                let is16 = sr == "fsrcnnx_metal16" || sr == "fsrcnnx16"
+                let model = is16 ? "quality" : "fast"
                 filters.append("@iive-sr:iive-fsrcnnx=tier=\(model):fallback=\(fallbackOption)")
-                let backend = sr == "fsrcnnx_metal16" ? "fsrcnnx16-mpsgraph" : "fsrcnnx8-mpsgraph"
-                nextSrStatus = meta("iive-sr")["backend"] == backend ? state("iive-sr") + " · MPSGraph 2×" : "Warming native FSRCNNX"
+                let backend = is16 ? "fsrcnnx16-mpsgraph" : "fsrcnnx8-mpsgraph"
+                let baseStatus = meta("iive-sr")["backend"] == backend ? state("iive-sr") + " · MPSGraph 2×" : "Warming native FSRCNNX"
+                nextSrStatus = srCompare ? baseStatus + " · Split Compare" : baseStatus
             }
             else if shaderFailed && sr.hasPrefix("fsrcnnx") && !sr.contains("metal") { nextSrStatus = "Disabled · shader execution not confirmed; Retry" }
             else if sr == "apple" {
@@ -781,6 +970,9 @@ struct MediaTrack: Identifiable, Equatable {
         let plan = filters.joined(separator: ",") + "|" + (shader ?? "")
         if plan != lastPlan {
             session?.applyFilters(filters, shader: shader); lastPlan = plan; settledSamples = 0
+            if srCompare {
+                command(["vf-command", "iive-sr", "split", String(format: "%.4f", srSplitRatio)])
+            }
         }
     }
     private func valueBool(_ key: String) -> Bool { telemetry.raw[key] as? Bool ?? false }
@@ -804,7 +996,7 @@ struct MediaTrack: Identifiable, Equatable {
         saved = saved.filter { recent.contains($0.key) }
         defaults.set(saved, forKey: "positions")
     }
-    func shutdown() { queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); lumaTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; deferredSnapshot = nil; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); telemetry.reset(); timeline.reset(); loaded = false; adaptiveLightGlass = false; muted = false; queue = []; chapters = []; queueIndex = -1; path = ""; title = "IIVE Player"; paused = true; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self) }
+    func shutdown() { seekPreviewTask?.cancel(); seekPreviewTask = nil; frameActions.close(); liveCaptions.stop(); liveCaptionPlacement = "off"; secondarySubtitleID = "no"; queuePopover = false; quickSettings = false; cancelFolderScan(); queueDateTask?.cancel(); customQueueOrder = []; queueDates = [:]; queueMembership = ""; queueOrderRequest = ""; deferredSnapshot = nil; windowModes.prepareForShutdown(self); savePosition(); session?.shutdown(); windowModes.resetAfterClose(self); session = nil; lastDecoderOption = ""; colorProfileTask?.cancel(); telemetry.reset(); timeline.reset(); enhancementWarming = false; loaded = false; adaptiveLightGlass = false; muted = false; queue = []; chapters = []; queueIndex = -1; path = ""; title = "IIVE Player"; paused = true; audioTracks = []; subtitles = []; audioID = "no"; subtitleID = "no"; srStatus = "Off"; fiStatus = "Off"; error = ""; pendingResume = nil; lastPlan = ""; fileEpoch = ""; menuState.sync(from: self); nowPlaying.clear() }
 }
 private extension String { var nonempty: String? { isEmpty ? nil : self } }
 

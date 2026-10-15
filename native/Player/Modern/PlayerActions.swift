@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
 import ImageIO
+import MediaPlayer
 
 struct QueueItem: Identifiable, Equatable {
     let id: Int64
@@ -62,7 +63,18 @@ extension PlayerModel {
     }
     func deleteQueueFile(_ item: QueueItem) {
         cancelFolderScan()
+        guard item.filename.hasPrefix("/") else {
+            error = "Only local files can be moved to Trash."
+            return
+        }
         let fileURL = URL(fileURLWithPath: item.filename).standardizedFileURL
+        // Commit queue/history changes only after the filesystem operation succeeds.
+        do {
+            try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
+        } catch {
+            self.error = "Failed to move \"\(fileURL.lastPathComponent)\" to Trash: \(error.localizedDescription)"
+            return
+        }
         removeQueueItem(item.id)
         var updatedRecent = recent
         updatedRecent.removeAll { URL(fileURLWithPath: $0).standardizedFileURL == fileURL }
@@ -74,11 +86,6 @@ extension PlayerModel {
             saved.removeValue(forKey: item.filename)
             saved.removeValue(forKey: fileURL.path)
             UserDefaults.standard.set(saved, forKey: "positions")
-        }
-        do {
-            try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
-        } catch {
-            self.error = "Failed to move \"\(fileURL.lastPathComponent)\" to Trash: \(error.localizedDescription)"
         }
     }
     func toggleMute() {
@@ -124,67 +131,153 @@ extension PlayerModel {
         guard !resolved.isEmpty else { return }
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: resolved)])
     }
-    func saveScreenshot() {
-        guard loaded else { return }
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "\(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)-\(Int(max(0, position)))s.png"
-        menuState.modalPanelActive = true
-        panel.begin { [weak self] response in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.menuState.modalPanelActive = NSApp?.modalWindow != nil
-                guard response == .OK, let url = panel.url else { return }
-                // mpv window screenshot includes final scaling, excludes SwiftUI chrome.
-                self.command(["screenshot-to-file", url.path, "window"])
-                self.osd.show("Screenshot Saved", symbol: "camera.fill")
-            }
-        }
-    }
+    func saveScreenshot() { frameActions.save() }
+    func saveScreenshotAs() { frameActions.saveAs() }
+
 }
 
-/// Serial, bounded metadata cache; never create another mpv session for queue artwork.
+/// Bounded metadata cache; never create another mpv session for queue artwork.
 struct QueueMetadata: Sendable {
     var duration: Double?
     var size: Int64?
     var cover: Data?
 }
+/// A deadline resumes the caller even if an OS media read is slow to acknowledge
+/// cancellation. The operation's late result cannot resume its continuation twice.
+private final class MediaReadGate<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var continuation: CheckedContinuation<Value?, Never>?
+    private var worker: Task<Void, Never>?
+    private var deadline: DispatchWorkItem?
+    private let cancelOperation: @Sendable () -> Void
+    init(cancel: @escaping @Sendable () -> Void) { cancelOperation = cancel }
+    func start(_ continuation: CheckedContinuation<Value?, Never>, seconds: Double,
+               operation: @escaping @Sendable () async -> Value?) {
+        lock.lock()
+        guard !finished else { lock.unlock(); continuation.resume(returning: nil); return }
+        self.continuation = continuation
+        let timer = DispatchWorkItem { [weak self] in self?.complete(nil, cancel: true) }
+        deadline = timer
+        worker = Task.detached(priority: Task.currentPriority) { [self] in
+            let value = Task.isCancelled ? nil : await operation()
+            complete(value, cancel: false)
+        }
+        lock.unlock()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds, execute: timer)
+    }
+    func complete(_ value: Value?, cancel: Bool) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        let continuation = continuation, worker = worker, deadline = deadline
+        self.continuation = nil; self.worker = nil; self.deadline = nil
+        lock.unlock()
+        deadline?.cancel()
+        if cancel { worker?.cancel(); cancelOperation() }
+        continuation?.resume(returning: value)
+    }
+}
+func mediaReadWithDeadline<Value: Sendable>(seconds: Double, cancel: @escaping @Sendable () -> Void,
+                                          operation: @escaping @Sendable () async -> Value?) async -> Value? {
+    let gate = MediaReadGate<Value>(cancel: cancel)
+    return await withTaskCancellationHandler {
+        await withCheckedContinuation { gate.start($0, seconds: seconds, operation: operation) }
+    } onCancel: { gate.complete(nil, cancel: true) }
+}
+
+/// Covers only queue artwork; interactive timeline decoding has a separate lane.
+private actor QueueReadSlots {
+    static let shared = QueueReadSlots()
+    private var active = 0
+    private var waiting: [(UUID, CheckedContinuation<Bool, Never>)] = []
+    func acquire() async -> Bool {
+        guard !Task.isCancelled else { return false }
+        if active < 2 { active += 1; return true }
+        let ticket = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume(returning: false) }
+                else { waiting.append((ticket, continuation)) }
+            }
+        } onCancel: { Task { await self.cancel(ticket) } }
+    }
+    private func cancel(_ ticket: UUID) {
+        guard let index = waiting.firstIndex(where: { $0.0 == ticket }) else { return }
+        waiting.remove(at: index).1.resume(returning: false)
+    }
+    func release() {
+        if !waiting.isEmpty { waiting.removeFirst().1.resume(returning: true) }
+        else { active -= 1 }
+    }
+}
 actor QueueMetadataCache {
     static let shared = QueueMetadataCache()
+    private struct Entry {
+        let id: UUID
+        let task: Task<QueueMetadata, Never>
+        var subscribers: Set<UUID>
+    }
     private var cache: [String: QueueMetadata] = [:]
-    private var pending: [String: Task<QueueMetadata, Never>] = [:]
-    private var tail: Task<QueueMetadata, Never>?
+    private var recency: [String] = []
+    private var pending: [String: Entry] = [:]
+    private func touch(_ key: String) {
+        recency.removeAll { $0 == key }; recency.append(key)
+        while recency.count > 128 { cache.removeValue(forKey: recency.removeFirst()) }
+    }
+    private func unsubscribe(_ key: String, id: UUID, subscriber: UUID) {
+        guard var entry = pending[key], entry.id == id else { return }
+        entry.subscribers.remove(subscriber)
+        if entry.subscribers.isEmpty { entry.task.cancel(); pending[key] = nil }
+        else { pending[key] = entry }
+    }
     func read(_ filename: String, cover: Bool) async -> QueueMetadata {
+        guard !Task.isCancelled else { return QueueMetadata() }
         let key = filename + (cover ? "|cover" : "|basic")
-        if let value = cache[key] { return value }
-        if let task = pending[key] { return await task.value }
-        let previous = tail
-        let task = Task.detached(priority: .utility) {
-            _ = await previous?.value
-            let url = URL(fileURLWithPath: filename)
-            let attributes = try? url.resourceValues(forKeys: [.fileSizeKey])
-            var result = QueueMetadata(size: attributes?.fileSize.map(Int64.init))
-            let asset = AVURLAsset(url: url)
-            if let time = try? await asset.load(.duration), time.seconds.isFinite, time.seconds > 0 { result.duration = time.seconds }
-            if cover {
+        if let value = cache[key] { touch(key); return value }
+        let subscriber = UUID()
+        let entry: Entry
+        if var existing = pending[key] {
+            existing.subscribers.insert(subscriber); pending[key] = existing; entry = existing
+        } else {
+            let task = Task.detached(priority: .utility) {
+                guard await QueueReadSlots.shared.acquire() else { return QueueMetadata() }
+                let asset = AVURLAsset(url: URL(fileURLWithPath: filename))
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: 192, height: 108)
-                if let image = try? await generator.image(at: CMTime(seconds: min(5, (result.duration ?? 0) * 0.1), preferredTimescale: 600)).image {
-                    let data = NSMutableData()
-                    if let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) {
-                        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
-                        if CGImageDestinationFinalize(destination) { result.cover = data as Data }
+                generator.requestedTimeToleranceBefore = .positiveInfinity
+                generator.requestedTimeToleranceAfter = .positiveInfinity
+                let result: QueueMetadata? = await mediaReadWithDeadline(seconds: 6, cancel: {
+                    asset.cancelLoading(); generator.cancelAllCGImageGeneration()
+                }) {
+                    let attributes = try? URL(fileURLWithPath: filename).resourceValues(forKeys: [.fileSizeKey])
+                    var result = QueueMetadata(size: attributes?.fileSize.map(Int64.init))
+                    if let time = try? await asset.load(.duration), time.seconds.isFinite, time.seconds > 0 { result.duration = time.seconds }
+                    guard !Task.isCancelled else { return nil }
+                    if cover, let image = try? await generator.image(at: CMTime(seconds: min(5, (result.duration ?? 0) * 0.1), preferredTimescale: 600)).image {
+                        let data = NSMutableData()
+                        if let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) {
+                            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
+                            if CGImageDestinationFinalize(destination) { result.cover = data as Data }
+                        }
                     }
+                    return result
                 }
+                await QueueReadSlots.shared.release()
+                return result ?? QueueMetadata()
             }
-            return result
+            entry = Entry(id: UUID(), task: task, subscribers: [subscriber]); pending[key] = entry
         }
-        tail = task; pending[key] = task
-        let result = await task.value
-        pending[key] = nil
-        if cache.count >= 128 { cache.removeAll(keepingCapacity: true) }
-        cache[key] = result
-        return result
+        return await withTaskCancellationHandler {
+            let result = await entry.task.value
+            if !Task.isCancelled, pending[key]?.id == entry.id {
+                // Don't permanently cache a timeout/unreadable asset as a successful read.
+                if result.size != nil || result.duration != nil || result.cover != nil { cache[key] = result; touch(key) }
+            }
+            unsubscribe(key, id: entry.id, subscriber: subscriber)
+            return Task.isCancelled ? QueueMetadata() : result
+        } onCancel: { Task { await self.unsubscribe(key, id: entry.id, subscriber: subscriber) } }
     }
 }
 
@@ -394,5 +487,134 @@ struct QueueView: View {
         } message: { item in
             Text("The file \"\(URL(fileURLWithPath: item.filename).lastPathComponent)\" will be removed from the play queue and moved to the Trash.")
         }
+    }
+}
+
+/// Low-frequency macOS Control Center / Now Playing and hardware media key integration.
+/// Updates `MPNowPlayingInfoCenter` only on track/state/rate/seek transitions (never on 4 Hz time ticks).
+@MainActor final class PlayerNowPlayingController {
+    private weak var model: PlayerModel?
+    private var registered = false
+    private var lastSignature = ""
+
+    func bind(to model: PlayerModel) {
+        self.model = model
+        guard !registered else { return }
+        registered = true
+        let center = MPRemoteCommandCenter.shared()
+
+        center.playCommand.isEnabled = true
+        center.playCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded || !model.path.isEmpty else { return .noActionableNowPlayingItem }
+                if model.paused { model.togglePause() }
+                return .success
+            }
+        }
+
+        center.pauseCommand.isEnabled = true
+        center.pauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded || !model.path.isEmpty else { return .noActionableNowPlayingItem }
+                if !model.paused { model.togglePause() }
+                return .success
+            }
+        }
+
+        center.togglePlayPauseCommand.isEnabled = true
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded || !model.path.isEmpty else { return .noActionableNowPlayingItem }
+                model.togglePause()
+                return .success
+            }
+        }
+
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.canNext else { return .commandFailed }
+                model.nextFile()
+                return .success
+            }
+        }
+
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.canPrevious else { return .commandFailed }
+                model.previousFile()
+                return .success
+            }
+        }
+
+        center.skipForwardCommand.isEnabled = true
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: model.seekSeconds)]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded else { return .noActionableNowPlayingItem }
+                model.skip(1)
+                return .success
+            }
+        }
+
+        center.skipBackwardCommand.isEnabled = true
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: model.seekSeconds)]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded else { return .noActionableNowPlayingItem }
+                model.skip(-1)
+                return .success
+            }
+        }
+
+        center.changePlaybackPositionCommand.isEnabled = true
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let posEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            let targetTime = posEvent.positionTime
+            return MainActor.assumeIsolated {
+                guard let model = self?.model, model.loaded else { return .noActionableNowPlayingItem }
+                model.seek(targetTime)
+                return .success
+            }
+        }
+    }
+
+    func sync(from model: PlayerModel, forcePosition: Double? = nil) {
+        let infoCenter = MPNowPlayingInfoCenter.default()
+        guard model.loaded, !model.path.isEmpty else {
+            if !lastSignature.isEmpty {
+                clear()
+            }
+            return
+        }
+        let durBucket = Int(model.duration.rounded())
+        let sig = "\(model.path)|\(model.title)|\(model.paused)|\(model.speed)|\(durBucket)|\(model.canNext)|\(model.canPrevious)|\(Int(model.seekSeconds))"
+        guard forcePosition != nil || sig != lastSignature else { return }
+        lastSignature = sig
+
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.nextTrackCommand.isEnabled = model.canNext
+        commandCenter.previousTrackCommand.isEnabled = model.canPrevious
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: model.seekSeconds)]
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: model.seekSeconds)]
+
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: model.title,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: max(0, forcePosition ?? model.position),
+            MPNowPlayingInfoPropertyPlaybackRate: model.paused ? 0.0 : model.speed,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
+        ]
+        if model.duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = model.duration
+        }
+        infoCenter.nowPlayingInfo = info
+        infoCenter.playbackState = model.paused ? .paused : .playing
+    }
+
+    func clear() {
+        lastSignature = ""
+        let infoCenter = MPNowPlayingInfoCenter.default()
+        infoCenter.nowPlayingInfo = nil
+        infoCenter.playbackState = .stopped
     }
 }

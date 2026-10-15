@@ -3,13 +3,13 @@ import SwiftUI
 
 struct PlayerSettings: View {
     @ObservedObject var model: PlayerModel
-    @ObservedObject var telemetry: PlayerTelemetryState
+    let telemetry: PlayerTelemetryState
     init(model: PlayerModel) {
         self.model = model
         self.telemetry = model.telemetry
     }
     var body: some View {
-        let _ = telemetry.snapshot.count
+        let _ = telemetry.revision
         TabView {
             Form {
                 Section("Viewing") {
@@ -48,6 +48,13 @@ struct PlayerSettings: View {
                     Toggle("Show Covers and File Sizes", isOn: $model.queueDetailed)
                     Text("Title and duration are always shown. Drag rows to reorder in Custom mode. Unavailable metadata is shown as N/A.").font(.caption).foregroundStyle(.secondary)
                     if !model.folderQueueStatus.isEmpty { Text(model.folderQueueStatus).font(.caption).foregroundStyle(.secondary) }
+                }
+                Section("Screenshots") {
+                    LabeledContent("Save images to") {
+                        Text(model.frameActions.folder.path).lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+                    }
+                    Button("Choose Screenshot Folder…", systemImage: "folder") { model.frameActions.chooseFolder() }
+                    Text("Save Image writes a uniquely named PNG immediately. Save Image As lets you choose a location. Captures include displayed video and mpv subtitles, without controls or live-caption overlays. HDR is captured as displayed SDR.").font(.caption).foregroundStyle(.secondary)
                 }
                 Section("History") {
                     LabeledContent("Recent videos", value: "\(model.recent.count)")
@@ -96,16 +103,15 @@ struct PlayerSettings: View {
                         Text("None").tag("no")
                         ForEach(model.audioTracks) { Text($0.title).tag(String($0.id)) }
                     }
-                    Picker("Subtitles", selection: Binding(get: { model.subtitleID }, set: { model.selectTrack("sid", $0) })) {
-                        Text("Off").tag("no")
-                        ForEach(model.subtitles) { Text($0.title).tag(String($0.id)) }
-                    }
-                    Button("Load Subtitles…") { model.openPanel(subtitle: true) }
+                    SubtitleControls(model: model)
                     Stepper(value: numberBinding("audio-delay", default: 0), in: -10...10, step: 0.1) {
                         LabeledContent("Audio delay", value: String(format: "%+.1f s", model.number("audio-delay") ?? 0))
                     }
                     Stepper(value: numberBinding("sub-delay", default: 0), in: -60...60, step: 0.1) {
                         LabeledContent("Subtitle delay", value: String(format: "%+.1f s", model.number("sub-delay") ?? 0))
+                    }
+                    Stepper(value: numberBinding("secondary-sub-delay", default: 0), in: -60...60, step: 0.1) {
+                        LabeledContent("Second subtitle delay", value: String(format: "%+.1f s", model.number("secondary-sub-delay") ?? 0))
                     }
                     LabeledContent("Subtitle size") {
                         Slider(value: numberBinding("sub-scale", default: 1), in: 0.5...2.5, step: 0.1)
@@ -144,6 +150,9 @@ struct PlayerSettings: View {
                     LabeledContent("Video Information", value: "⌘I")
                     LabeledContent("Mute / Normal Speed", value: "M / ⌘0")
                     LabeledContent("Screenshot / Subtitles", value: "⌥⌘S / ⇧⌘S")
+                    LabeledContent("Save Image", value: "⌥⌘S")
+                    LabeledContent("Save Image As", value: "⇧⌥⌘S")
+                    LabeledContent("Add Time Marker", value: "⌘B")
                     LabeledContent("Settings", value: "⌘,")
                     Text("Frame stepping pauses playback. Backward stepping seeks and decodes again; speed and precision depend on the media and active interpolation filters.")
                         .font(.caption).foregroundStyle(.secondary)

@@ -12,6 +12,7 @@
 #include "video/img_format.h"
 #include "video/sws_utils.h"
 #include "iive_surface.h"
+#include "IIVEApple.h"
 struct surface {
     AVBuffer *identity;
     CVPixelBufferRef pixels;
@@ -50,8 +51,8 @@ struct mp_image *iive_surface_wrap(CVPixelBufferRef pixels, struct mp_image *att
     pthread_mutex_lock(&mutex);entry->next=surfaces;surfaces=entry;pthread_mutex_unlock(&mutex);
     mp_image_copy_attributes(out,attributes);
     out->params.hw_subfmt=0;
-    if (out->params.repr.sys==PL_COLOR_SYSTEM_UNKNOWN)
-        out->params.repr.sys=PL_COLOR_SYSTEM_BT_709;
+    // All buffers wrapped here are model outputs or our normalized input pool.
+    out->params.repr.sys=PL_COLOR_SYSTEM_BT_709;
     out->params.repr.levels=PL_COLOR_LEVELS_LIMITED;
     out->params.chroma_location=PL_CHROMA_CENTER;
     struct mp_rect crop=attributes->params.crop;
@@ -68,6 +69,28 @@ static enum mp_imgfmt vt_software_imgfmt(CVPixelBufferRef p) {
     if (fmt==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
         fmt==kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) return IMGFMT_P010;
     return 0;
+}
+bool iive_surface_normalize(struct iive_normalizer *normalizer, CVPixelBufferRef dst, const struct mp_image *img) {
+    if (!img || (img->fields & MP_IMGFIELD_INTERLACED) || img->imgfmt!=IMGFMT_VIDEOTOOLBOX || !img->planes[3] ||
+        img->params.color.primaries!=PL_COLOR_PRIM_BT_709 ||
+        img->params.color.transfer!=PL_COLOR_TRC_BT_1886 ||
+        img->params.repr.sys!=PL_COLOR_SYSTEM_BT_709 ||
+        (img->params.chroma_location!=PL_CHROMA_CENTER && img->params.chroma_location!=PL_CHROMA_LEFT) ||
+        (img->params.repr.levels!=PL_COLOR_LEVELS_LIMITED && img->params.repr.levels!=PL_COLOR_LEVELS_FULL))return false;
+    CVPixelBufferRef source=(CVPixelBufferRef)img->planes[3];
+    enum mp_imgfmt sw_fmt=vt_software_imgfmt(source);
+    if (img->w!=(int)CVPixelBufferGetWidth(source) || img->h!=(int)CVPixelBufferGetHeight(source) ||
+        (sw_fmt!=IMGFMT_NV12 && sw_fmt!=IMGFMT_P010))return false;
+    if (!normalizer->attempted) {
+        normalizer->attempted=true;
+        normalizer->engine=iive_nv12_create();
+    }
+    return iive_nv12_normalize(normalizer->engine,source,dst,
+        img->params.repr.levels==PL_COLOR_LEVELS_FULL,img->params.chroma_location==PL_CHROMA_LEFT);
+}
+void iive_surface_normalizer_destroy(struct iive_normalizer *normalizer) {
+    iive_nv12_destroy(normalizer->engine);
+    *normalizer=(struct iive_normalizer){0};
 }
 bool iive_surface_supported_input(const struct mp_image *img) {
     if (!img) return false;
@@ -96,59 +119,43 @@ int iive_surface_scale_input(struct mp_sws_context *sws, struct mp_image *dst, s
     CVPixelBufferUnlockBaseAddress(p,kCVPixelBufferLock_ReadOnly);
     return result;
 }
+// Shared inputs must already satisfy the model's pixel contract. Attachments on
+// decoder-owned buffers are read-only here: relabeling chroma is not resampling.
 static bool iive_is_supported_sdr(const struct mp_image *img) {
-    if (!img) return false;
-    enum pl_color_levels levels = img->params.repr.levels;
-    if (levels != PL_COLOR_LEVELS_LIMITED && levels != PL_COLOR_LEVELS_UNKNOWN)
-        return false;
-    enum pl_color_system sys = img->params.repr.sys;
-    if (sys != PL_COLOR_SYSTEM_BT_709 &&
-        sys != PL_COLOR_SYSTEM_BT_601 &&
-        sys != PL_COLOR_SYSTEM_BT_2020_NC &&
-        sys != PL_COLOR_SYSTEM_UNKNOWN)
-        return false;
-    enum pl_color_transfer trc = img->params.color.transfer;
-    if (trc != PL_COLOR_TRC_BT_1886 &&
-        trc != PL_COLOR_TRC_SRGB &&
-        trc != PL_COLOR_TRC_GAMMA22 &&
-        trc != PL_COLOR_TRC_GAMMA28 &&
-        trc != PL_COLOR_TRC_UNKNOWN)
-        return false;
-    return true;
+    return img && img->params.repr.levels == PL_COLOR_LEVELS_LIMITED &&
+        img->params.repr.sys == PL_COLOR_SYSTEM_BT_709 &&
+        img->params.color.primaries == PL_COLOR_PRIM_BT_709 &&
+        img->params.color.transfer == PL_COLOR_TRC_BT_1886 &&
+        img->params.chroma_location == PL_CHROMA_CENTER;
 }
-static void iive_apply_cv_color_attachments(CVPixelBufferRef p, const struct mp_image *img) {
-    CFStringRef matrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2;
-    if (img->params.repr.sys == PL_COLOR_SYSTEM_BT_601)
-        matrix = kCVImageBufferYCbCrMatrix_ITU_R_601_4;
-    else if (img->params.repr.sys == PL_COLOR_SYSTEM_BT_2020_NC)
-        matrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
-
-    CFStringRef primaries = kCVImageBufferColorPrimaries_ITU_R_709_2;
-    switch (img->params.color.primaries) {
-    case PL_COLOR_PRIM_BT_601_525:
-        primaries = kCVImageBufferColorPrimaries_SMPTE_C;
-        break;
-    case PL_COLOR_PRIM_BT_601_625:
-        primaries = kCVImageBufferColorPrimaries_EBU_3213;
-        break;
-    case PL_COLOR_PRIM_DISPLAY_P3:
-        primaries = kCVImageBufferColorPrimaries_P3_D65;
-        break;
-    case PL_COLOR_PRIM_BT_2020:
-        primaries = kCVImageBufferColorPrimaries_ITU_R_2020;
-        break;
-    default:
-        break;
-    }
-
-    CFStringRef transfer = kCVImageBufferTransferFunction_ITU_R_709_2;
-    if (img->params.color.transfer == PL_COLOR_TRC_SRGB)
-        transfer = kCVImageBufferTransferFunction_sRGB;
-
-    CVBufferSetAttachment(p, kCVImageBufferYCbCrMatrixKey, matrix, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(p, kCVImageBufferColorPrimariesKey, primaries, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(p, kCVImageBufferTransferFunctionKey, transfer, kCVAttachmentMode_ShouldPropagate);
-    CVBufferSetAttachment(p, kCVImageBufferChromaLocationTopFieldKey, kCVImageBufferChromaLocation_Center, kCVAttachmentMode_ShouldPropagate);
+static bool attachment_matches(CVPixelBufferRef pixels, CFStringRef key, CFStringRef expected) {
+    CFTypeRef value = CVBufferCopyAttachment(pixels, key, NULL);
+    bool matches = value && CFEqual(value, expected);
+    if (value) CFRelease(value);
+    return matches;
+}
+CVPixelBufferRef iive_surface_acquire_fsr_left(const struct mp_image *img) {
+    if(!img || (img->fields & MP_IMGFIELD_INTERLACED) || img->imgfmt!=IMGFMT_VIDEOTOOLBOX || !img->planes[3] ||
+       img->params.repr.levels!=PL_COLOR_LEVELS_LIMITED || img->params.repr.sys!=PL_COLOR_SYSTEM_BT_709 ||
+       img->params.color.primaries!=PL_COLOR_PRIM_BT_709 || img->params.color.transfer!=PL_COLOR_TRC_BT_1886 ||
+       img->params.chroma_location!=PL_CHROMA_LEFT)return NULL;
+    CVPixelBufferRef pixels=(CVPixelBufferRef)img->planes[3];
+    if(CVPixelBufferGetPixelFormatType(pixels)!=kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+       CVPixelBufferGetPlaneCount(pixels)!=2 || !CVPixelBufferGetIOSurface(pixels) ||
+       img->w!=(int)CVPixelBufferGetWidth(pixels) || img->h!=(int)CVPixelBufferGetHeight(pixels))return NULL;
+    return CVPixelBufferRetain(pixels);
+}
+CVPixelBufferRef iive_surface_acquire_fsr_p010(const struct mp_image *img, bool *out_left) {
+    if(!img || (img->fields & MP_IMGFIELD_INTERLACED) || img->imgfmt!=IMGFMT_VIDEOTOOLBOX || !img->planes[3] ||
+       img->params.repr.levels!=PL_COLOR_LEVELS_LIMITED || img->params.repr.sys!=PL_COLOR_SYSTEM_BT_709 ||
+       img->params.color.primaries!=PL_COLOR_PRIM_BT_709 || img->params.color.transfer!=PL_COLOR_TRC_BT_1886 ||
+       (img->params.chroma_location!=PL_CHROMA_CENTER && img->params.chroma_location!=PL_CHROMA_LEFT))return NULL;
+    CVPixelBufferRef pixels=(CVPixelBufferRef)img->planes[3];
+    if(CVPixelBufferGetPixelFormatType(pixels)!=kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
+       CVPixelBufferGetPlaneCount(pixels)!=2 || !CVPixelBufferGetIOSurface(pixels) ||
+       img->w!=(int)CVPixelBufferGetWidth(pixels) || img->h!=(int)CVPixelBufferGetHeight(pixels))return NULL;
+    if(out_left)*out_left=(img->params.chroma_location==PL_CHROMA_LEFT);
+    return CVPixelBufferRetain(pixels);
 }
 CVPixelBufferRef iive_surface_acquire(const struct mp_image *img) {
     if (!iive_is_supported_sdr(img))
@@ -159,7 +166,11 @@ CVPixelBufferRef iive_surface_acquire(const struct mp_image *img) {
             CVPixelBufferGetPlaneCount(p)!=2 || !CVPixelBufferGetIOSurface(p) ||
             img->w!=(int)CVPixelBufferGetWidth(p) || img->h!=(int)CVPixelBufferGetHeight(p))
             return NULL;
-        iive_apply_cv_color_attachments(p, img);
+        if (!attachment_matches(p, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2) ||
+            !attachment_matches(p, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2) ||
+            !attachment_matches(p, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2) ||
+            !attachment_matches(p, kCVImageBufferChromaLocationTopFieldKey, kCVImageBufferChromaLocation_Center))
+            return NULL;
         return CVPixelBufferRetain(p);
     }
     if (img->imgfmt!=IMGFMT_NV12 || !img->bufs[0] || img->params.chroma_location!=PL_CHROMA_CENTER) return NULL;

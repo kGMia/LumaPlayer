@@ -123,10 +123,17 @@ struct PlayerView: View {
                         Button("Open Video…") { model.openPanel() }.buttonStyle(.borderedProminent)
                     }.foregroundStyle(.white)
                 }
+                if !model.miniPlayer, model.liveCaptionPlacement != "off" {
+                    LiveCaptionOverlay(captions: model.liveCaptions, top: model.liveCaptionPlacement == "top")
+                }
+                if model.isSRSplitActive {
+                    SRSplitComparisonOverlay(model: model)
+                }
                 VStack {
                     HStack(alignment: .top) {
                         if model.showVideoInfo && model.loaded && !model.miniPlayer {
                             VideoInformationHUD(model: model)
+                                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                         }
                         Spacer(minLength: 0)
                         if model.loaded && !model.miniPlayer {
@@ -134,6 +141,7 @@ struct PlayerView: View {
                                 .padding(.trailing, showOverlaySidebar ? 328 : 0)
                         }
                     }
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: model.showVideoInfo)
                     Spacer()
                     if model.loaded {
                         FloatingTransport(model: model, scrubbing: $scrubbing, settings: $model.quickSettings)
@@ -143,6 +151,7 @@ struct PlayerView: View {
                                 if $0 { activity.last = Date() }
                             }
                             .opacity(controlsVisible ? 1 : 0)
+                            .offset(y: reduceMotion || controlsVisible ? 0 : 10)
                             .allowsHitTesting(controlsVisible)
                             .accessibilityHidden(!controlsVisible)
                     }
@@ -161,8 +170,8 @@ struct PlayerView: View {
                 .opacity(showOverlaySidebar ? 1 : 0)
                 .allowsHitTesting(showOverlaySidebar)
                 .accessibilityHidden(!showOverlaySidebar)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: showOverlaySidebar)
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: showOverlaySidebar)
         .frame(minWidth: 580, minHeight: 340)
         .ignoresSafeArea(.container, edges: model.fullScreen ? .all : [])
         .background(PlayerWindowReader(model: model).frame(width: 0, height: 0))
@@ -181,13 +190,14 @@ struct PlayerView: View {
             }
         }
         .onReceive(timer) { now in
-            if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.paused && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
+            if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.loaded && !model.enhancementWarming && !model.paused && model.timeline.pendingSeek == nil && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controlsVisible = false }
             }
         }
         .onChange(of: model.miniPlayer) { scrubbing = false; hoveringControls = false; revealControls() }
         .onChange(of: model.autoHideControls) { revealControls() }
         .onChange(of: model.paused) { revealControls() }
+        .onChange(of: model.enhancementWarming) { revealControls() }
         .onChange(of: model.path) { revealControls() }
         .onChange(of: model.quickSettings) { revealControls() }
         .onChange(of: model.queuePopover) { revealControls() }
@@ -301,13 +311,13 @@ struct PlayerView: View {
 
 struct EnhancementInspector: View {
     @ObservedObject var model: PlayerModel
-    @ObservedObject var telemetry: PlayerTelemetryState
+    let telemetry: PlayerTelemetryState
     init(model: PlayerModel) {
         self.model = model
         self.telemetry = model.telemetry
     }
     var body: some View {
-        let _ = telemetry.snapshot.count
+        let _ = telemetry.revision
         Form {
             Section("Enhancement") {
                 EnhancementControls(model: model)
@@ -318,20 +328,22 @@ struct EnhancementInspector: View {
                     Text("None").tag("no")
                     ForEach(model.audioTracks) { Text($0.title).tag(String($0.id)) }
                 }
-                Picker("Subtitles", selection: Binding(get: { model.subtitleID }, set: { model.selectTrack("sid", $0) })) {
-                    Text("Off").tag("no")
-                    ForEach(model.subtitles) { Text($0.title).tag(String($0.id)) }
-                }
-                Button("Load Subtitles…") { model.openPanel(subtitle: true) }
+                SubtitleControls(model: model)
             }
             Section("Live Performance") {
+                row("Playback phase", model.snapshot["playback-phase"] as? String ?? "N/A")
                 row("Dropped frames", model.number("frame-drop-count").map { String(Int($0)) } ?? "N/A")
                 row("Interpolation job", model.jobTime(model.fi == "rife" ? "iive-rife" : "iive-fi"))
                 row("Super resolution job", model.jobTime("iive-sr"))
                 row("SR input", model.meta("iive-sr")["input_surface"] ?? "N/A")
+                row("Reused SR outputs", model.meta("iive-sr")["reused_outputs"] ?? "N/A")
                 row("Shared SR inputs", model.meta("iive-sr")["shared_inputs"] ?? "N/A")
+                row("GPU-normalized SR inputs", model.meta("iive-sr")["normalized_inputs"] ?? "N/A")
+                row("SR input / model / output", model.stageTimes("iive-sr"))
+                row("FI input", model.meta(model.fi == "rife" ? "iive-rife" : "iive-fi")["input_surface"] ?? "N/A")
+                row("FI input / model / output", model.stageTimes(model.fi == "rife" ? "iive-rife" : "iive-fi"))
                 row("A/V clock offset", model.number("avsync").map { String(format: "%.1f ms", $0 * 1000) } ?? "N/A")
-                Text("Latest job times include conversion and inference; they are not end-to-end playback latency.")
+                Text("Stage times are worker wall time: input conversion, model API call (including GPU wait), and output wrapping/conversion. They exclude queue and display latency; model calls may produce more than one frame.")
                     .font(.caption).foregroundStyle(.white.opacity(0.72))
             }
             Section("Processing") {
@@ -357,3 +369,87 @@ struct EnhancementInspector: View {
         .font(.caption)
     }
 }
+
+/// Interactive split-wipe comparison overlay for Super Resolution (Original on left vs Super-Resolved on right).
+/// Maps the normalized split ratio directly to the letterboxed/pillarboxed video canvas rect.
+struct SRSplitComparisonOverlay: View {
+    @ObservedObject var model: PlayerModel
+
+    private func videoRect(in canvas: CGSize) -> CGRect {
+        let w = (model.source["dw"] as? NSNumber)?.doubleValue ?? (model.source["w"] as? NSNumber)?.doubleValue ?? Double(max(canvas.width, 1))
+        let h = (model.source["dh"] as? NSNumber)?.doubleValue ?? (model.source["h"] as? NSNumber)?.doubleValue ?? Double(max(canvas.height, 1))
+        guard w > 0, h > 0, canvas.width > 0, canvas.height > 0 else {
+            return CGRect(origin: .zero, size: canvas)
+        }
+        let videoAspect = CGFloat(w / h)
+        let canvasAspect = canvas.width / canvas.height
+        if canvasAspect > videoAspect {
+            let videoHeight = canvas.height
+            let videoWidth = videoHeight * videoAspect
+            return CGRect(x: (canvas.width - videoWidth) * 0.5, y: 0, width: videoWidth, height: videoHeight)
+        } else {
+            let videoWidth = canvas.width
+            let videoHeight = videoWidth / videoAspect
+            return CGRect(x: 0, y: (canvas.height - videoHeight) * 0.5, width: videoWidth, height: videoHeight)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let rect = videoRect(in: geometry.size)
+            let splitX = rect.minX + rect.width * CGFloat(model.srSplitRatio)
+            ZStack(alignment: .topLeading) {
+                // Vertical split line inside the active video area
+                Rectangle()
+                    .fill(Color.white.opacity(0.88))
+                    .frame(width: 1.5, height: rect.height)
+                    .shadow(color: .black.opacity(0.65), radius: 2, x: 0, y: 0)
+                    .position(x: splitX, y: rect.midY)
+                    .allowsHitTesting(false)
+
+                // Left / Right comparison labels near top of divider
+                HStack(spacing: 12) {
+                    Text("Original")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    Text("FSRCNNX 2×")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.45), radius: 4, x: 0, y: 1)
+                .position(x: min(max(splitX, rect.minX + 90), rect.maxX - 90), y: max(rect.minY + 28, 36))
+                .allowsHitTesting(false)
+
+                // Draggable handle on the divider line
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 30, height: 30)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.75), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.45), radius: 5, x: 0, y: 2)
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 40, height: max(rect.height, 44))
+                .contentShape(Rectangle())
+                .position(x: splitX, y: rect.midY)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard rect.width > 1 else { return }
+                            let ratio = Double((value.location.x - rect.minX) / rect.width)
+                            model.srSplitRatio = min(0.95, max(0.05, ratio))
+                        }
+                )
+                .help("Drag to compare Original (left) vs Super Resolution (right)")
+            }
+        }
+    }
+}
+

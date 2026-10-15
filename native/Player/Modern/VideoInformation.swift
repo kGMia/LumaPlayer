@@ -42,6 +42,16 @@ extension PlayerModel {
     var sourceColor: String {
         ["primaries", "gamma", "colormatrix", "colorlevels"].map { source[$0] as? String ?? "N/A" }.joined(separator: " · ")
     }
+    var dolbyVisionProfile: Int? { (selectedTrack("video")["dolby-vision-profile"] as? NSNumber)?.intValue }
+    var isDolbyVision: Bool { dolbyVisionProfile != nil || source["colormatrix"] as? String == "dolbyvision" }
+    var dolbyVisionStatus: String {
+        let profile = dolbyVisionProfile.map { "Profile \($0) · " } ?? ""
+        if !dolbyVisionMapping { return profile + "RPU mapping disabled · base layer only (Profile 5 colors may be incorrect)" }
+        let mapped = (snapshot["vo-passes"] as? [String] ?? []).contains { $0.contains("IIVE Dolby Vision RPU mapping") }
+        if mapped { return profile + "RPU mapping → SDR · experimental" }
+        if dolbyVisionProfile == 5 { return profile + "RPU mapping unavailable · colors may be incorrect; try Software decoding" }
+        return profile + "Base layer only · RPU mapping not confirmed; try Software decoding"
+    }
     var hudDecoderDescription: String {
         let raw = (snapshot["hwdec-current"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let active: String
@@ -57,17 +67,23 @@ extension PlayerModel {
         guard let value = Double(meta(label)["processing_ms"] ?? ""), value.isFinite else { return "N/A" }
         return String(format: "%.2f ms", value)
     }
+    func stageTimes(_ label: String) -> String {
+        let metadata = meta(label)
+        let values = ["input_ms", "model_call_ms", "output_ms"].compactMap { Double(metadata[$0] ?? "") }
+        guard values.count == 3, values.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return "N/A" }
+        return values.map { String(format: "%.2f", $0) }.joined(separator: " / ") + " ms"
+    }
 }
 
 struct VideoInformationHUD: View {
     @ObservedObject var model: PlayerModel
-    @ObservedObject var telemetry: PlayerTelemetryState
+    let telemetry: PlayerTelemetryState
     init(model: PlayerModel) {
         self.model = model
         self.telemetry = model.telemetry
     }
     var body: some View {
-        let _ = telemetry.snapshot.count
+        let _ = telemetry.revision
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Image(systemName: "film").foregroundStyle(.secondary)
@@ -87,6 +103,7 @@ struct VideoInformationHUD: View {
                 Text(model.hudDecoderDescription)
             }
             Text("\(model.sourceCodec) · \(model.videoBitrate)").lineLimit(2)
+            if model.isDolbyVision { Text("Dolby Vision · " + model.dolbyVisionStatus).lineLimit(3) }
             Text("CPU \(model.processCPU) · Memory \(model.memoryDescription("process-memory-bytes"))")
             Text("Video packet bitrate · Output cadence estimated from frame timestamps").font(.caption2).foregroundStyle(.secondary)
         }.font(.caption.monospacedDigit()).padding(14).modifier(PlaybackGlass())
@@ -96,13 +113,13 @@ struct VideoInformationHUD: View {
 
 struct VideoInformationRows: View {
     @ObservedObject var model: PlayerModel
-    @ObservedObject var telemetry: PlayerTelemetryState
+    let telemetry: PlayerTelemetryState
     init(model: PlayerModel) {
         self.model = model
         self.telemetry = model.telemetry
     }
     var body: some View {
-        let _ = telemetry.snapshot.count
+        let _ = telemetry.revision
         LabeledContent("Source", value: model.sourceDescription)
         LabeledContent("Source FPS (container)", value: model.fps("container-fps"))
         LabeledContent("Video codec / profile", value: model.sourceCodec)
@@ -115,6 +132,11 @@ struct VideoInformationRows: View {
         Text("Packet bitrate is estimated between keyframes and may update slowly. It is not network speed or total file bitrate.").font(.caption).foregroundStyle(.secondary)
         LabeledContent("Source pixel format", value: model.source["pixelformat"] as? String ?? "N/A")
         Text(model.sourceColor).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        if model.isDolbyVision {
+            LabeledContent("Dolby Vision", value: model.dolbyVisionStatus)
+            Text("The OpenGL presentation surface is SDR. Supported per-frame RPU is mapped on the GPU before BT.2390 tone mapping. No native Dolby Vision / EDR output or full enhancement-layer reconstruction. SDR-only neural effects are bypassed.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         LabeledContent("Filter output", value: model.outputDescription)
         LabeledContent("Output FPS (estimated)", value: model.fps("estimated-vf-fps"))
         LabeledContent("Picture area", value: model.pictureDescription)
@@ -244,13 +266,16 @@ struct DecoderSettings: View {
             Label("Hardware · Copy", systemImage: "square.on.square").tag("videotoolbox-copy")
         }
         Text(model.decoderExplanation).font(.caption).foregroundStyle(.secondary)
-        Text("Changes apply to the current video and are saved. Auto shares zero-copy VideoToolbox IOSurfaces with native enhancement filters when supported. Unsupported hardware formats fall back automatically; changing modes may briefly interrupt decoding.")
+        Text("Changes apply to the current video and are saved. Auto shares VideoToolbox IOSurfaces only when color metadata and centered chroma match the model input; other supported frames are converted. Unsupported hardware formats fall back automatically; changing modes may briefly interrupt decoding.")
             .font(.caption).foregroundStyle(.secondary)
     }
 }
 struct PictureSettings: View {
     @ObservedObject var model: PlayerModel
     var body: some View {
+        Toggle("Dolby Vision RPU Mapping · Experimental", isOn: $model.dolbyVisionMapping)
+        Text("Applies available per-frame Dolby Vision metadata before SDR tone mapping. No EDR output or full enhancement-layer reconstruction. Turn off only to compare a compatible base layer; Profile 5 requires RPU mapping for correct colors.")
+            .font(.caption).foregroundStyle(.secondary)
         Picker("Rotation · Added to File Orientation", selection: $model.rotation) {
             Text("0°").tag(0); Text("90° Clockwise").tag(90); Text("180°").tag(180); Text("270° Clockwise").tag(270)
         }

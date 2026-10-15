@@ -11,10 +11,16 @@ private func model(_ handle:UnsafeMutableRawPointer)->FSRCNNXModel {Unmanaged<FS
     do{return Unmanaged.passRetained(try model(handle).makeInput()).toOpaque()}catch{return nil}
 }
 @_cdecl("iive_fsr_process") public func fsrProcess(_ handle:UnsafeMutableRawPointer?,_ input:UnsafeRawPointer?)->UnsafeMutableRawPointer? {
+    fsrProcessChroma(handle,input,0)
+}
+@_cdecl("iive_fsr_process_chroma") public func fsrProcessChroma(_ handle:UnsafeMutableRawPointer?,_ input:UnsafeRawPointer?,_ left:Int32)->UnsafeMutableRawPointer? {
+    fsrProcessSplit(handle,input,left,0.0)
+}
+@_cdecl("iive_fsr_process_split") public func fsrProcessSplit(_ handle:UnsafeMutableRawPointer?,_ input:UnsafeRawPointer?,_ left:Int32,_ splitRatio:Float)->UnsafeMutableRawPointer? {
     guard let handle,let input else{return nil}
     return autoreleasepool { do {
         let pixels=Unmanaged<CVPixelBuffer>.fromOpaque(input).takeUnretainedValue()
-        return Unmanaged.passRetained(try model(handle).process(pixels)).toOpaque()
+        return Unmanaged.passRetained(try model(handle).process(pixels,chromaLeft:left != 0,splitRatio:splitRatio)).toOpaque()
     }catch{return nil} }
 }
 @_cdecl("iive_fsr_destroy") public func fsrDestroy(_ handle:UnsafeMutableRawPointer?) {

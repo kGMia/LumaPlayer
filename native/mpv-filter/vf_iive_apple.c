@@ -23,16 +23,21 @@
 #include "IIVEFSR.h"
 #include "iive_surface.h"
 #define CAPACITY 8
-struct opts { int mode; float scale; bool fallback; };
+struct opts { int mode; float scale; float split; bool fallback; };
 struct batch {struct mp_frame frames[CAPACITY]; bool synthesized[CAPACITY]; int count;};
 struct engine {
     struct mp_sws_context *sws;
+    struct iive_normalizer normalizer;
+    double input_ms, model_ms, output_ms;
     void *stream;
     struct mp_image *previous;
-    CVPixelBufferRef previous_pixels;
+    CVPixelBufferRef previous_pixels, cached_input, cached_output;
+    bool cached_left;
+    float cached_split;
+    uint64_t reused_outputs;
     int width, height, bad, pairs, mode;
-    bool fallback;
-    uint64_t shared_inputs, copied_inputs;
+    bool fallback, input_left;
+    uint64_t shared_inputs, copied_inputs, normalized_inputs;
     const char *input_surface;
     const char *state;
 };
@@ -46,7 +51,9 @@ struct priv {
     struct batch ready;
     uint64_t generation, job_generation, emitted, generated, stale;
     double speed, job_speed, last_ms, total_ms, peak_ms;
-    uint64_t jobs, shared_inputs, copied_inputs;
+    float split, job_split;
+    uint64_t jobs, shared_inputs, copied_inputs, normalized_inputs, reused_outputs;
+    double input_ms, model_ms, output_ms;
     const char *input_surface;
     const char *state;
 };
@@ -57,6 +64,9 @@ static bool append(struct batch *b, struct mp_frame frame, bool synthesized) {
     b->frames[b->count]=frame;b->synthesized[b->count++]=synthesized;return true;
 }
 static void clear_engine(struct engine *e, bool destroy) {
+    if(e->cached_input)CVPixelBufferRelease(e->cached_input);
+    if(e->cached_output)CVPixelBufferRelease(e->cached_output);
+    e->cached_input=e->cached_output=NULL;
     TA_FREEP(&e->previous);
     if(e->previous_pixels)CVPixelBufferRelease(e->previous_pixels);
     e->previous_pixels=NULL;
@@ -65,27 +75,31 @@ static void clear_engine(struct engine *e, bool destroy) {
 }
 static bool supported(struct mp_image *img, bool fi) {
     return img->w>0 && img->h>0 && !(img->w%2) && !(img->h%2) &&
-        (img->params.color.primaries==PL_COLOR_PRIM_BT_709 ||
-         img->params.color.primaries==PL_COLOR_PRIM_DISPLAY_P3 ||
-         img->params.color.primaries==PL_COLOR_PRIM_BT_2020 ||
-         img->params.color.primaries==PL_COLOR_PRIM_BT_601_525 ||
-         img->params.color.primaries==PL_COLOR_PRIM_BT_601_625 ||
-         img->params.color.primaries==PL_COLOR_PRIM_EBU_3213) &&
-        (img->params.color.transfer==PL_COLOR_TRC_BT_1886 ||
-         img->params.color.transfer==PL_COLOR_TRC_SRGB ||
-         img->params.color.transfer==PL_COLOR_TRC_GAMMA22 ||
-         img->params.color.transfer==PL_COLOR_TRC_GAMMA28) &&
+        img->params.color.primaries==PL_COLOR_PRIM_BT_709 &&
+        img->params.color.transfer==PL_COLOR_TRC_BT_1886 &&
         img->params.repr.sys!=PL_COLOR_SYSTEM_DOLBYVISION && !img->params.rotate &&
         img->pts!=MP_NOPTS_VALUE && isfinite(img->pts) &&
         img->nominal_fps>0 && (!fi || img->nominal_fps<=30.01) && iive_surface_supported_input(img);
 }
 // Zero-copy IOSurface acquisition for VT hwdec and upstream filters; swscale fallback into pooled NV12.
 static CVPixelBufferRef convert_input(struct engine *e, struct mp_image *img) {
+    e->input_left=false;
     CVPixelBufferRef shared=iive_surface_acquire(img);
     if(shared){e->shared_inputs++;e->input_surface="shared-iosurface";return shared;}
-    e->copied_inputs++;e->input_surface="swscale-copy";
+    if(e->mode>=2 && (shared=iive_surface_acquire_fsr_left(img))) {
+        e->input_left=true;e->shared_inputs++;e->input_surface="fused-metal-chroma";return shared;
+    }
+    if(e->mode>=2 && (shared=iive_surface_acquire_fsr_p010(img,&e->input_left))) {
+        e->shared_inputs++;
+        e->input_surface=e->input_left?"fused-metal-p010-chroma":"shared-p010-iosurface";
+        return shared;
+    }
     CVPixelBufferRef pixels=e->mode>=2?iive_fsr_input(e->stream):iive_apple_input(e->stream);
     if(!pixels)return NULL;
+    if(iive_surface_normalize(&e->normalizer,pixels,img)) {
+        e->normalized_inputs++;e->input_surface="metal-normalized";return pixels;
+    }
+    e->copied_inputs++;e->input_surface="swscale-copy";
     if(CVPixelBufferLockBaseAddress(pixels,0)){CVPixelBufferRelease(pixels);return NULL;}
     struct mp_image view={0};mp_image_setfmt(&view,IMGFMT_NV12);mp_image_set_size(&view,img->w,img->h);
     view.params.color=img->params.color;view.params.repr=img->params.repr;
@@ -121,27 +135,69 @@ static void tail(struct engine *e, struct batch *b) {
         append(b,(struct mp_frame){MP_FRAME_VIDEO,out},false);e->previous=NULL;
     }
 }
-static void run_job(struct engine *e,const struct opts *o,struct mp_frame frame,double speed,struct batch *b) {
+// Reset may race a model compile/conversion. Check between expensive stages;
+// already-submitted GPU work is allowed to finish and is discarded by the worker.
+static bool job_canceled(struct priv *p, uint64_t generation) {
+    pthread_mutex_lock(&p->mutex);
+    bool canceled=p->stop || p->generation!=generation;
+    pthread_mutex_unlock(&p->mutex);
+    return canceled;
+}
+static void run_job(struct engine *e,const struct opts *o,struct mp_frame frame,double speed,float split,struct batch *b,struct priv *p,uint64_t generation) {
+    if(job_canceled(p,generation)){mp_frame_unref(&frame);return;}
     bool fi=o->mode==1;
     if(mp_frame_is_signaling(frame)) {bool degraded=e->fallback;tail(e,b);clear_engine(e,false);e->fallback=degraded;e->state=degraded?"degraded-finished":"finished";append(b,frame,false);return;}
     if(frame.type!=MP_FRAME_VIDEO){append(b,frame,false);return;}
     struct mp_image *img=frame.data;bool usable=supported(img,fi);
     if(e->stream && (img->w!=e->width || img->h!=e->height || !usable ||
         (e->previous && (img->pts<=e->previous->pts || img->pts-e->previous->pts>0.1 ||
-        img->params.color.transfer!=e->previous->params.color.transfer)))) {tail(e,b);clear_engine(e,true);}
+        img->params.color.transfer!=e->previous->params.color.transfer ||
+        img->params.color.primaries!=e->previous->params.color.primaries ||
+        img->params.repr.sys!=e->previous->params.repr.sys ||
+        img->params.repr.levels!=e->previous->params.repr.levels ||
+        img->params.chroma_location!=e->previous->params.chroma_location)))) {tail(e,b);clear_engine(e,true);}
     if(!usable){e->state="bypassed-format";append(b,frame,false);return;}
     if(e->fallback){append(b,frame,false);return;}
     double start=seconds();
     if(!e->stream){e->width=img->w;e->height=img->h;e->stream=e->mode>=2?iive_fsr_create(img->w,img->h,e->mode==2?8:16):iive_apple_create(img->w,img->h,fi,o->scale);}
     if(!e->stream){e->fallback=true;e->state="unsupported-or-model-unavailable";append(b,frame,false);return;}
+    if(job_canceled(p,generation)){mp_frame_unref(&frame);return;}
+    double phase=seconds();
     CVPixelBufferRef input=convert_input(e,img);
+    e->input_ms=(seconds()-phase)*1000;
     if(!input){tail(e,b);clear_engine(e,true);e->fallback=true;e->state="error-bypass";append(b,frame,false);return;}
+    if(job_canceled(p,generation)){CVPixelBufferRelease(input);mp_frame_unref(&frame);return;}
     bool cut=fi&&e->previous&&scene_cut(input,e->previous_pixels);
     bool needs_output=!fi || (e->previous && !cut);
     struct mp_image *out=NULL;
     if(needs_output) {
-        CVPixelBufferRef pixels=e->mode>=2?iive_fsr_process(e->stream,input):iive_apple_process(e->stream,input,e->previous_pixels,img->pts,e->previous?e->previous->pts:0);
+        phase=seconds();
+        CVPixelBufferRef pixels=NULL;
+        // Frame holds emitted by interpolation can reference the exact same retained
+        // immutable surface. FSRCNNX is spatial: reuse its result, with fresh mpv PTS.
+        if(e->mode>=2 && input==e->cached_input && e->input_left==e->cached_left && fabsf(split-e->cached_split)<1e-4f && e->cached_output) {
+            pixels=CVPixelBufferRetain(e->cached_output);e->reused_outputs++;
+        } else {
+            pixels=e->mode>=2?iive_fsr_process_split(e->stream,input,e->input_left,split):iive_apple_process(e->stream,input,e->previous_pixels,img->pts,e->previous?e->previous->pts:0);
+            if(e->mode>=2) {
+                if(e->cached_input)CVPixelBufferRelease(e->cached_input);
+                if(e->cached_output)CVPixelBufferRelease(e->cached_output);
+                e->cached_input=e->cached_output=NULL;
+                if(pixels && (!strcmp(e->input_surface,"shared-iosurface") ||
+                              !strcmp(e->input_surface,"fused-metal-chroma") ||
+                              !strcmp(e->input_surface,"shared-p010-iosurface") ||
+                              !strcmp(e->input_surface,"fused-metal-p010-chroma"))) {
+                    e->cached_input=CVPixelBufferRetain(input);e->cached_output=CVPixelBufferRetain(pixels);e->cached_left=e->input_left;e->cached_split=split;
+                }
+            }
+        }
+        e->model_ms=(seconds()-phase)*1000;phase=seconds();
+        if(job_canceled(p,generation)){
+            if(pixels)CVPixelBufferRelease(pixels);
+            CVPixelBufferRelease(input);mp_frame_unref(&frame);return;
+        }
         out=iive_surface_wrap(pixels,img);
+        e->output_ms=(seconds()-phase)*1000;
     }
     e->pairs++;
     double budget=1.0/img->nominal_fps/speed;
@@ -179,21 +235,21 @@ static void *worker(void *arg)
             clear_engine(&e,false);pthread_mutex_lock(&p->mutex);continue;
         }
         struct mp_frame frame=p->job;p->job=MP_NO_FRAME;
-        uint64_t generation=p->job_generation;double speed=p->job_speed;
+        uint64_t generation=p->job_generation;double speed=p->job_speed;float split=p->job_split;
         pthread_mutex_unlock(&p->mutex);
-        struct batch b={0};double start=seconds();run_job(&e,p->opts,frame,speed,&b);
+        struct batch b={0};e.input_ms=e.model_ms=e.output_ms=0;double start=seconds();run_job(&e,p->opts,frame,speed,split,&b,p,generation);
         double ms=(seconds()-start)*1000;
         pthread_mutex_lock(&p->mutex);
         p->busy=false;
         if(generation!=p->generation || p->stop){p->stale++;discard(&b);}
         else {
-            p->ready=b;p->state=e.state;p->shared_inputs=e.shared_inputs;p->copied_inputs=e.copied_inputs;p->input_surface=e.input_surface;p->last_ms=ms;p->total_ms+=ms;
+            p->ready=b;p->reused_outputs=e.reused_outputs;p->state=e.state;p->shared_inputs=e.shared_inputs;p->copied_inputs=e.copied_inputs;p->normalized_inputs=e.normalized_inputs;p->input_ms=e.input_ms;p->model_ms=e.model_ms;p->output_ms=e.output_ms;p->input_surface=e.input_surface;p->last_ms=ms;p->total_ms+=ms;
             p->peak_ms=fmax(p->peak_ms,ms);p->jobs++;
         }
         mp_filter_wakeup(f);
     }
     mp_frame_unref(&p->job);pthread_mutex_unlock(&p->mutex);
-    clear_engine(&e,true);talloc_free(e.sws);return NULL;
+    clear_engine(&e,true);iive_surface_normalizer_destroy(&e.normalizer);talloc_free(e.sws);return NULL;
 }
 static void reset(struct mp_filter *f)
 {
@@ -220,7 +276,7 @@ static void process(struct mp_filter *f)
     }
     if(!p->busy) {
         struct mp_frame frame=mp_pin_out_read(f->ppins[0]);
-        if(frame.type){p->job=frame;p->busy=true;p->job_generation=p->generation;p->job_speed=p->speed;pthread_cond_signal(&p->cond);}
+        if(frame.type){p->job=frame;p->busy=true;p->job_generation=p->generation;p->job_speed=p->speed;p->job_split=p->split;pthread_cond_signal(&p->cond);}
     }
     pthread_mutex_unlock(&p->mutex);
 }
@@ -232,19 +288,30 @@ static bool command(struct mp_filter *f, struct mp_filter_command *cmd)
         if(!cmd->arg || end==cmd->arg || *end || !isfinite(speed) || speed<=0)return false;
         pthread_mutex_lock(&p->mutex);p->speed=speed;pthread_mutex_unlock(&p->mutex);return true;
     }
+    if(cmd->type==MP_FILTER_COMMAND_TEXT && !strcmp(cmd->cmd,"split")){
+        char *end;double split=strtod(cmd->arg?cmd->arg:"",&end);
+        if(!cmd->arg || end==cmd->arg || *end || !isfinite(split) || split<0 || split>1)return false;
+        pthread_mutex_lock(&p->mutex);p->split=(float)split;pthread_mutex_unlock(&p->mutex);return true;
+    }
     if(cmd->type!=MP_FILTER_COMMAND_GET_META)return false;
     struct mp_tags *tags=talloc_zero(NULL,struct mp_tags);pthread_mutex_lock(&p->mutex);
     mp_tags_set_str(tags,"state",p->state);
     mp_tags_set_str(tags,"input_surface",p->input_surface?p->input_surface:"pending");
+    mp_tags_set_str(tags,"reused_outputs",mp_tprintf(32,"%llu",(unsigned long long)p->reused_outputs));
     mp_tags_set_str(tags,"shared_inputs",mp_tprintf(32,"%llu",(unsigned long long)p->shared_inputs));
     mp_tags_set_str(tags,"copied_inputs",mp_tprintf(32,"%llu",(unsigned long long)p->copied_inputs));
     mp_tags_set_str(tags,"backend",p->opts->mode==2?"fsrcnnx8-mpsgraph":p->opts->mode==3?"fsrcnnx16-mpsgraph":"apple-videotoolbox");
+    mp_tags_set_str(tags,"split_ratio",mp_tprintf(32,"%.3f",p->split));
     mp_tags_set_str(tags,"generated",mp_tprintf(32,"%llu",(unsigned long long)p->generated));
     mp_tags_set_str(tags,"emitted",mp_tprintf(32,"%llu",(unsigned long long)p->emitted));
     mp_tags_set_str(tags,"generation",mp_tprintf(32,"%llu",(unsigned long long)p->generation));
     mp_tags_set_str(tags,"stale_jobs_discarded",mp_tprintf(32,"%llu",(unsigned long long)p->stale));
     mp_tags_set_str(tags,"queued",mp_tprintf(32,"%d",p->ready.count));
     mp_tags_set_str(tags,"inflight",p->busy?"1":"0");
+    mp_tags_set_str(tags,"normalized_inputs",mp_tprintf(32,"%llu",(unsigned long long)p->normalized_inputs));
+    mp_tags_set_str(tags,"input_ms",mp_tprintf(32,"%.3f",p->input_ms));
+    mp_tags_set_str(tags,"model_call_ms",mp_tprintf(32,"%.3f",p->model_ms));
+    mp_tags_set_str(tags,"output_ms",mp_tprintf(32,"%.3f",p->output_ms));
     mp_tags_set_str(tags,"processing_ms",mp_tprintf(32,"%.3f",p->last_ms));
     mp_tags_set_str(tags,"mean_processing_ms",mp_tprintf(32,"%.3f",p->jobs?p->total_ms/p->jobs:0));
     mp_tags_set_str(tags,"peak_processing_ms",mp_tprintf(32,"%.3f",p->peak_ms));
@@ -264,7 +331,7 @@ static struct mp_filter *create(struct mp_filter *parent, void *options)
 {
     struct mp_filter *f=mp_filter_create(parent,&info);
     if(!f){talloc_free(options);return NULL;}
-    struct priv *p=f->priv;p->opts=talloc_steal(p,options);p->speed=1;p->state="warming";
+    struct priv *p=f->priv;p->opts=talloc_steal(p,options);p->speed=1;p->split=p->opts->split;p->state="warming";
     pthread_mutex_init(&p->mutex,NULL);pthread_cond_init(&p->cond,NULL);
     mp_filter_add_pin(f,MP_PIN_IN,"in");mp_filter_add_pin(f,MP_PIN_OUT,"out");
     if(pthread_create(&p->thread,NULL,worker,f)){talloc_free(f);return NULL;}
@@ -276,7 +343,7 @@ static const struct m_option options[]={
     {"scale",OPT_FLOAT(scale),M_RANGE(1.0,4.0)},
     {"fallback",OPT_BOOL(fallback)}, {0}
 };
-static const struct opts defaults={.mode=0,.scale=2,.fallback=true};
+static const struct opts defaults={.mode=0,.scale=2,.split=0,.fallback=true};
 const struct mp_user_filter_entry vf_iive_apple={
     .desc={.name="iive-apple",.description="Apple low-latency SDR super resolution / midpoint interpolation",
     .priv_size=sizeof(struct opts),.priv_defaults=&defaults,.options=options},.create=create,
@@ -286,9 +353,10 @@ const struct mp_user_filter_entry vf_iive_apple={
 // the Apple adapter; model execution is a distinct Swift/MPSGraph C ABI.
 static const struct m_option fsr_options[]={
     {"tier",OPT_CHOICE(mode,{"fast",2},{"quality",3})},
+    {"split",OPT_FLOAT(split),M_RANGE(0.0,1.0)},
     {"fallback",OPT_BOOL(fallback)}, {0}
 };
-static const struct opts fsr_defaults={.mode=2,.scale=2,.fallback=true};
+static const struct opts fsr_defaults={.mode=2,.scale=2,.split=0,.fallback=true};
 const struct mp_user_filter_entry vf_iive_fsrcnnx={
     .desc={.name="iive-fsrcnnx",.description="Native FSRCNNX 8/16 MPSGraph 2x SDR super resolution",
     .priv_size=sizeof(struct opts),.priv_defaults=&fsr_defaults,.options=fsr_options},.create=create,

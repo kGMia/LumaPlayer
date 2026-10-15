@@ -31,16 +31,15 @@ private struct BufferSlot {
     let outputData: MPSGraphTensorData
 }
 
-/// Double-buffered GPU workspace, pre-bound MPSGraphTensorData descriptors, and periodic texture-cache maintenance.
+/// Synchronous per-worker GPU workspace with pre-bound tensor descriptors.
+/// One slot is sufficient because process waits for GPU completion before returning.
 public final class FSRCNNXModel {
     public let width: Int, height: Int
     let weights: FSRWeights
     private let device: MTLDevice, queue: MTLCommandQueue
     private let executable: MPSGraphExecutable
-    private let slots: [BufferSlot]
-    private let inflightSemaphore = DispatchSemaphore(value: 2)
-    private let slotLock = NSLock()
-    private var nextSlot = 0
+    private let slot: BufferSlot
+    private let inflightSemaphore = DispatchSemaphore(value: 1)
     private var frameCount: UInt64 = 0
     private let readLuma: MTLComputePipelineState, writeNV12: MTLComputePipelineState
     private let cache: CVMetalTextureCache
@@ -50,24 +49,59 @@ public final class FSRCNNXModel {
               let queue = device.makeCommandQueue() else {throw FSRError.unavailable("Invalid dimensions or GPU queue")}
         let inShape: [NSNumber] = [1, NSNumber(value: height), NSNumber(value: width), 1]
         let outShape: [NSNumber] = [1, NSNumber(value: height), NSNumber(value: width), 4]
-        var allocatedSlots: [BufferSlot] = []
-        allocatedSlots.reserveCapacity(2)
-        for _ in 0..<2 {
-            guard let input = device.makeBuffer(length: width * height * 2, options: .storageModePrivate),
-                  let output = device.makeBuffer(length: width * height * 4 * 2, options: .storageModePrivate) else {
-                throw FSRError.unavailable("Invalid dimensions or GPU memory")
-            }
-            allocatedSlots.append(BufferSlot(
-                input: input,
-                output: output,
-                inputData: MPSGraphTensorData(input, shape: inShape, dataType: .float16),
-                outputData: MPSGraphTensorData(output, shape: outShape, dataType: .float16)
-            ))
+        guard let input = device.makeBuffer(length: width * height * 2, options: .storageModePrivate),
+              let output = device.makeBuffer(length: width * height * 4 * 2, options: .storageModePrivate) else {
+            throw FSRError.unavailable("Invalid dimensions or GPU memory")
         }
+        slot=BufferSlot(input:input,output:output,
+            inputData:MPSGraphTensorData(input,shape:inShape,dataType:.float16),
+            outputData:MPSGraphTensorData(output,shape:outShape,dataType:.float16))
         self.device=device;self.queue=queue;self.width=width;self.height=height
-        self.slots=allocatedSlots
         weights=try FSRWeights.load(tier)
-        let library=try device.makeDefaultLibrary(bundle: Bundle.module)
+        let shaderSource = """
+        #include <metal_stdlib>
+        using namespace metal;
+        kernel void fsrReadLuma(texture2d<half,access::read> y [[texture(0)]],
+                                device half *out [[buffer(0)]],
+                                constant float &lumaScale [[buffer(1)]],
+                                uint2 gid [[thread_position_in_grid]]) {
+            if(gid.x>=y.get_width() || gid.y>=y.get_height()) return;
+            float sampleY = clamp(float(y.read(gid).r) * lumaScale, 0.0f, 1.0f);
+            out[gid.y*y.get_width()+gid.x]=half(sampleY);
+        }
+        kernel void fsrWriteNV12(device const half *subpixel [[buffer(0)]],
+                                 texture2d<half,access::sample> sourceUV [[texture(0)]],
+                                 texture2d<half,access::write> y [[texture(1)]] ,
+                                 texture2d<half,access::write> uv [[texture(2)]],
+                                 texture2d<half,access::sample> sourceY [[texture(3)]],
+                                 constant float4 &chromaParams [[buffer(1)]],
+                                 uint2 gid [[thread_position_in_grid]]) {
+            if(gid.x>=y.get_width() || gid.y>=y.get_height()) return;
+            constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
+            uint w=y.get_width()/2;
+            uint i=((gid.y/2)*w+gid.x/2)*4+(gid.x%2)*2+gid.y%2;
+            half lumaOut = subpixel[i];
+            float splitRatio = chromaParams.z;
+            if(splitRatio > 0.0f && (float(gid.x)+0.5f)/float(y.get_width()) < splitRatio) {
+                float2 lumaPos = (float2(gid)+0.5f)/float2(y.get_width(),y.get_height());
+                float origY = clamp(float(sourceY.sample(s,lumaPos).r) * chromaParams.y, 0.0f, 1.0f);
+                lumaOut = half(origY);
+            }
+            y.write(half4(lumaOut,0,0,1),gid);
+            if((gid.x%2)==0 && (gid.y%2)==0) {
+                float2 pos=(float2(gid/2)+0.5f)/float2(uv.get_width(),uv.get_height());
+                pos.x += chromaParams.x / float(sourceUV.get_width());
+                float2 chroma = clamp(float2(sourceUV.sample(s,pos).rg) * chromaParams.y, 0.0f, 1.0f);
+                uv.write(half4(half2(chroma),0,1),gid/2);
+            }
+        }
+        """
+        let library: MTLLibrary
+        if let srcLib = try? device.makeLibrary(source: shaderSource, options: nil) {
+            library = srcLib
+        } else {
+            library = try device.makeDefaultLibrary(bundle: Bundle.module)
+        }
         guard let read=library.makeFunction(name:"fsrReadLuma"),let write=library.makeFunction(name:"fsrWriteNV12") else {throw FSRError.unavailable("Metal kernels missing")}
         readLuma=try device.makeComputePipelineState(function:read)
         writeNV12=try device.makeComputePipelineState(function:write)
@@ -125,10 +159,11 @@ public final class FSRCNNXModel {
         return out
     }
     public func makeInput()throws->CVPixelBuffer {try allocate(inputs)}
-    private func plane(_ pixels:CVPixelBuffer,_ index:Int)throws->(CVMetalTexture,MTLTexture) {
+    private func plane(_ pixels:CVPixelBuffer,_ index:Int,tenBit:Bool=false,writable:Bool=false)throws->(CVMetalTexture,MTLTexture) {
         var ref:CVMetalTexture?
-        let attrs=[kCVMetalTextureUsage:MTLTextureUsage([.shaderRead,.shaderWrite]).rawValue] as CFDictionary
-        let status=CVMetalTextureCacheCreateTextureFromImage(nil,cache,pixels,attrs,index==0 ? .r8Unorm:.rg8Unorm,
+        let attrs=[kCVMetalTextureUsage:(writable ? MTLTextureUsage.shaderWrite : .shaderRead).rawValue] as CFDictionary
+        let format:MTLPixelFormat = tenBit ? (index==0 ? .r16Unorm : .rg16Unorm) : (index==0 ? .r8Unorm : .rg8Unorm)
+        let status=CVMetalTextureCacheCreateTextureFromImage(nil,cache,pixels,attrs,format,
             CVPixelBufferGetWidthOfPlane(pixels,index),CVPixelBufferGetHeightOfPlane(pixels,index),index,&ref)
         guard status==kCVReturnSuccess,let ref,let tex=CVMetalTextureGetTexture(ref) else {throw FSRError.unavailable("Metal plane \(status)")}
         return(ref,tex)
@@ -138,38 +173,44 @@ public final class FSRCNNXModel {
         let x=pipeline.threadExecutionWidth,y=max(1,pipeline.maxTotalThreadsPerThreadgroup/x)
         encoder.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:x,height:y,depth:1))
     }
-    public func process(_ pixels:CVPixelBuffer)throws->CVPixelBuffer {
+    public func process(_ pixels:CVPixelBuffer, chromaLeft:Bool=false, splitRatio:Float=0.0)throws->CVPixelBuffer {
+        let fmt=CVPixelBufferGetPixelFormatType(pixels)
+        let isTenBit=(fmt==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange)
         guard CVPixelBufferGetWidth(pixels)==width,CVPixelBufferGetHeight(pixels)==height,
-              CVPixelBufferGetPixelFormatType(pixels)==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange else {throw FSRError.unavailable("Expected fixed-size 420v")}
+              (fmt==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || isTenBit) else {throw FSRError.unavailable("Expected fixed-size 420v or x420")}
         inflightSemaphore.wait()
-        var committed = false
-        defer { if !committed { inflightSemaphore.signal() } }
-        slotLock.lock()
-        let slot = slots[nextSlot]
-        nextSlot = (nextSlot + 1) % slots.count
+        defer { inflightSemaphore.signal() }
         frameCount &+= 1
         let shouldFlushCache = (frameCount & 63) == 0
-        slotLock.unlock()
         if shouldFlushCache { CVMetalTextureCacheFlush(cache, 0) }
         let output=try allocate(outputs)
-        let y=try plane(pixels,0),uv=try plane(pixels,1),oy=try plane(output,0),ouv=try plane(output,1)
+        let y=try plane(pixels,0,tenBit:isTenBit),uv=try plane(pixels,1,tenBit:isTenBit)
+        let oy=try plane(output,0,writable:true),ouv=try plane(output,1,writable:true)
         defer{withExtendedLifetime((y,uv,oy,ouv,pixels,output)) {}}
         guard let cb=queue.makeCommandBuffer() else {throw FSRError.unavailable("Command buffer")}
         let command=MPSCommandBuffer(commandBuffer:cb)
+        var inputScale:Float = isTenBit ? (257.0 / 256.0) : 1.0
         guard let read=command.commandBuffer.makeComputeCommandEncoder() else {throw FSRError.unavailable("Input encoder")}
         read.setTexture(y.1,index:0);read.setBuffer(slot.input,offset:0,index:0)
+        read.setBytes(&inputScale,length:MemoryLayout<Float>.size,index:1)
         dispatch(read,readLuma,width,height);read.endEncoding()
         executable.encode(to:command,inputs:[slot.inputData],results:[slot.outputData],executionDescriptor:nil)
         guard let write=command.commandBuffer.makeComputeCommandEncoder() else {throw FSRError.unavailable("Output encoder")}
-        write.setBuffer(slot.output,offset:0,index:0);write.setTexture(uv.1,index:0);write.setTexture(oy.1,index:1);write.setTexture(ouv.1,index:2)
+        write.setBuffer(slot.output,offset:0,index:0)
+        write.setTexture(uv.1,index:0)
+        write.setTexture(oy.1,index:1)
+        write.setTexture(ouv.1,index:2)
+        write.setTexture(y.1,index:3)
+        let clampedSplit = max(0.0, min(1.0, splitRatio))
+        var chromaParams=SIMD4<Float>(chromaLeft ? 0.25 : 0.0, inputScale, clampedSplit, 0.0)
+        write.setBytes(&chromaParams,length:MemoryLayout<SIMD4<Float>>.size,index:1)
         dispatch(write,writeNV12,width*2,height*2);write.endEncoding()
         let final=command.commandBuffer
-        let sem = inflightSemaphore
-        final.addCompletedHandler { _ in sem.signal() }
-        committed = true
         command.commit();command.waitUntilCompleted()
         if let error=final.error {throw error}
         CVBufferPropagateAttachments(pixels,output)
+        CVBufferSetAttachment(output,kCVImageBufferChromaLocationTopFieldKey,kCVImageBufferChromaLocation_Center,.shouldPropagate)
+        CVBufferSetAttachment(output,kCVImageBufferChromaLocationBottomFieldKey,kCVImageBufferChromaLocation_Center,.shouldPropagate)
         return output
     }
 }
