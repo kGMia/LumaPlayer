@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
@@ -22,7 +22,10 @@ let package = Package(
         ),
         .target(
             name: "RifeMetalCore",
-            exclude: ["Shaders"],
+            // Copy NV12 sources verbatim for runtime compilation when the optional
+            // Metal toolchain is absent and the baseline prebuilt library is used.
+            exclude: ["Shaders/BackwardWarp.metal", "Shaders/default.metallib.prebuilt"],
+            resources: [.copy("Shaders/NV12Input.metal"), .copy("Shaders/NV12Output.metal")],
             plugins: [.plugin(name: "CompileMetalShaders")]
         ),
         .plugin(

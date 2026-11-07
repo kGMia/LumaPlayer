@@ -7,22 +7,48 @@ public final class RifeInterpolator: @unchecked Sendable {
     private let context: InferenceContext
     private let weights: WeightStore
     private let qualityTier: RifeQualityTier
+    public var modelName: String { weights.header.model }
+    // Each IFBlock downsamples by 4 in addition to its stage scale.
+    // Lite's scale 32 needs 128 internal pixels, twice the v4.26 alignment.
+    public var modelPaddingMultiple: Int {
+        Int(Double((weights.header.scaleList.max() ?? 16) * 4) / qualityTier.internalScale)
+    }
     internal let queue = DispatchQueue(label: "rife.metal.interpolator", qos: .userInitiated)
     internal var graph: IFNetGraph?
     private var graphResolution: (Int, Int)?
+    private var preparationWeightsMS = 0.0
+    private var preparationContextMS = 0.0
+    public var compilationCacheHit: Bool { graph?.compilationCacheHit ?? false }
+    /// Serial owner only. Successful preparation wall times: weights/context/
+    /// pool/graph build+compile/rounding probe. -1 denotes unavailable or unused.
+    public var preparationMilliseconds: [Double] {
+        [preparationWeightsMS, preparationContextMS,
+         graph?.preparationTiming.poolMS ?? -1,
+         graph?.preparationTiming.compileMS ?? -1,
+         graph?.preparationTiming.probeMS ?? -1]
+    }
 
     public init(configuration: RifeConfiguration) throws {
-        do {
-            self.context = try InferenceContext(preferredDevice: configuration.preferredDevice)
-        } catch {
-            throw RifeError.metalUnavailable
-        }
-
+        let weightsStart = ProcessInfo.processInfo.systemUptime
+        // Validate the artifact before allocating GPU resources or compiling graphs.
         do {
             self.weights = try WeightStore(url: configuration.modelURL)
+            try weights.header.validateInferenceArchitecture()
+            // WeightStore already validated every payload range without copying
+            // weights. Actual tensor copies are deferred to graph construction.
         } catch {
             throw RifeError.modelLoadFailed(String(describing: error))
         }
+        preparationWeightsMS = (ProcessInfo.processInfo.systemUptime - weightsStart) * 1000
+        let contextStart = ProcessInfo.processInfo.systemUptime
+        do {
+            self.context = try InferenceContext(preferredDevice: configuration.preferredDevice)
+        } catch is InferenceContextError {
+            throw RifeError.metalUnavailable
+        } catch {
+            throw RifeError.shaderCompilationFailed(String(describing: error))
+        }
+        preparationContextMS = (ProcessInfo.processInfo.systemUptime - contextStart) * 1000
 
         self.qualityTier = configuration.qualityTier
     }
@@ -59,7 +85,7 @@ public final class RifeInterpolator: @unchecked Sendable {
         }
 
         return try queue.sync {
-            let padMul = qualityTier.paddingMultiple
+            let padMul = modelPaddingMultiple
             let paddedW = ((prevW + padMul - 1) / padMul) * padMul
             let paddedH = ((prevH + padMul - 1) / padMul) * padMul
             let needsPad = (paddedW != prevW) || (paddedH != prevH)
@@ -132,7 +158,7 @@ public final class RifeInterpolator: @unchecked Sendable {
         }
 
         try queue.sync {
-            let padMul  = qualityTier.paddingMultiple
+            let padMul  = modelPaddingMultiple
             let paddedW = ((prevW + padMul - 1) / padMul) * padMul
             let paddedH = ((prevH + padMul - 1) / padMul) * padMul
 
@@ -298,17 +324,22 @@ public final class RifeInterpolator: @unchecked Sendable {
         }
     }
 
-    private func ensureGraph(width: Int, height: Int) throws -> IFNetGraph {
+    private func ensureGraph(width: Int, height: Int, checkCancellation: () throws -> Void = {}) throws -> IFNetGraph {
+        try checkCancellation()
         if let g = graph, let res = graphResolution, res == (width, height) {
             return g
         }
         do {
             let g = try IFNetGraph(context: context, weights: weights,
                                    width: width, height: height,
-                                   internalScale: qualityTier.internalScale)
+                                   internalScale: qualityTier.internalScale,
+                                   checkCancellation: checkCancellation)
+            try checkCancellation()
             self.graph = g
             self.graphResolution = (width, height)
             return g
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw RifeError.inferenceFailed(String(describing: error))
         }
@@ -316,15 +347,16 @@ public final class RifeInterpolator: @unchecked Sendable {
 
     /// Creates a stateful stream session locked to the given resolution.
     /// Throws if the underlying IFNetGraph or buffers cannot be allocated.
-    public func makeStream(width: Int, height: Int) throws -> RifeStream {
+    public func makeStream(width: Int, height: Int, checkCancellation: () throws -> Void = {}) throws -> RifeStream {
+        try checkCancellation()
         guard width > 0, height > 0 else {
             throw RifeError.dimensionMismatch
         }
-        let padMul = qualityTier.paddingMultiple
+        let padMul = modelPaddingMultiple
         let paddedW = ((width + padMul - 1) / padMul) * padMul
         let paddedH = ((height + padMul - 1) / padMul) * padMul
 
-        let g = try ensureGraph(width: paddedW, height: paddedH)
+        let g = try ensureGraph(width: paddedW, height: paddedH, checkCancellation: checkCancellation)
         let intScale = qualityTier.internalScale
         let paddedIntW = Int((Double(paddedW) * intScale).rounded(.toNearestOrAwayFromZero))
         let paddedIntH = Int((Double(paddedH) * intScale).rounded(.toNearestOrAwayFromZero))

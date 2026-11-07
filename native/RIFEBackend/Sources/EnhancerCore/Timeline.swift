@@ -31,7 +31,11 @@ public struct Timeline {
    if CMTimeCompare(time,b)>=0 {break}
    tick+=1
    if CMTimeCompare(time,a)<0 {continue}
-   result.append(OutputTime(pts:time,fraction:Float(CMTimeGetSeconds(CMTimeSubtract(time,a))/span)))
+   // time < b in exact CMTime arithmetic, but a nanosecond-rounded input PTS
+   // can make the Float conversion round up to 1, which RifeStream rejects.
+   // Preserve the exact output clock/count; constrain only the model argument.
+   let fraction=min(Float(1).nextDown,Float(CMTimeGetSeconds(CMTimeSubtract(time,a))/span))
+   result.append(OutputTime(pts:time,fraction:fraction))
    if result.count>60 {throw BackendError.invalid("Output queue bound exceeded")}
   }
   return result

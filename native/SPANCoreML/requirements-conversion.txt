@@ -1,0 +1,5 @@
+# coremltools 9.0 declares PyTorch 2.7.0 its newest tested version.
+torch==2.7.0
+coremltools==9.0
+numpy==2.2.6
+pillow==11.2.1

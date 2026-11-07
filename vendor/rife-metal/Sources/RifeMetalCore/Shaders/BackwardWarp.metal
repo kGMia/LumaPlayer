@@ -39,7 +39,9 @@ kernel void rifeAccumulateFlowMaskRNA(
     half4 a = previousFlow[index], b = deltaFlow[index];
     outputFlow[index] = half4(rifeAddHalf(a.x,b.x,rounding.x), rifeAddHalf(a.y,b.y,rounding.x),
                              rifeAddHalf(a.z,b.z,rounding.x), rifeAddHalf(a.w,b.w,rounding.x));
-    outputMask[index] = rifeAddHalf(previousMask[index], deltaMask[index], rounding.y);
+    // mode 2: official v4.26 / v4.25-lite replace stage masks; only flow accumulates.
+    outputMask[index] = rounding.y == 2 ? deltaMask[index]
+        : rifeAddHalf(previousMask[index], deltaMask[index], rounding.y);
 }
 
 /// Backward warp: output[x, y] = source(x + flow.x, y + flow.y) with bilinear filtering.

@@ -2,6 +2,19 @@ import XCTest
 import CoreMedia
 @testable import EnhancerCore
 final class TimelineTests:XCTestCase {
+ func testRoundedNanosecondBoundaryKeepsModelFractionBelowOne()throws{
+  var t=try Timeline(fps:60)
+  // The 1/30 boundary rounded upward to nanoseconds is only 2/3 ns
+  // beyond the output tick. A direct Float cast rounds its fraction to 1.
+  let end=CMTime(value:33_333_334,timescale:1_000_000_000)
+  let frames=try t.between(.zero,end)
+  XCTAssertEqual(frames.count,3)
+  XCTAssertLessThan(frames.last!.fraction,1)
+  XCTAssertGreaterThan(frames.last!.fraction,0.999999)
+  XCTAssertEqual(CMTimeCompare(frames.last!.pts,CMTime(value:2,timescale:60)),0)
+  let next=try t.between(end,CMTime(value:66_666_667,timescale:1_000_000_000))
+  XCTAssertGreaterThan(CMTimeCompare(next.first!.pts,frames.last!.pts),0)
+ }
  func test24to60()throws{
   var t=try Timeline(fps:60)
   let first=try t.between(.zero,CMTime(value:1,timescale:24))

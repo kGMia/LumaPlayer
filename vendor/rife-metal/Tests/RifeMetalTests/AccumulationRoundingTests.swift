@@ -19,13 +19,13 @@ final class AccumulationRoundingTests: XCTestCase {
         for (i,pair) in edges.enumerated() { lhs[i]=pair.0;rhs[i]=pair.1 }
         memcpy(buffers[3].contents(),buffers[0].contents(),pixels*2)
         memcpy(buffers[4].contents(),buffers[1].contents(),pixels*2)
-        for mode: UInt32 in [0,1] {
+        for mode: UInt32 in [0,1,2] {
             let command = context.commandQueue.makeCommandBuffer()!
             let encoder = command.makeComputeCommandEncoder()!
             let pipeline = context.conversionKernels.accumulateFlowMask
             encoder.setComputePipelineState(pipeline)
             for i in 0..<6 { encoder.setBuffer(buffers[i],offset:0,index:i) }
-            var dimensions=SIMD2<UInt32>(128,128),rounding=SIMD2<UInt32>(mode,mode)
+            var dimensions=SIMD2<UInt32>(128,128),rounding=SIMD2<UInt32>(mode == 2 ? 0 : mode,mode)
             encoder.setBytes(&dimensions,length:8,index:6);encoder.setBytes(&rounding,length:8,index:7)
             encoder.dispatchThreads(MTLSize(width:128,height:128,depth:1),threadsPerThreadgroup:MTLSize(width:8,height:8,depth:1))
             encoder.endEncoding();command.commit();command.waitUntilCompleted()
@@ -41,6 +41,7 @@ final class AccumulationRoundingTests: XCTestCase {
                         let next=Float(Float16(bitPattern:(expected & 0x7fff)+1))
                         if abs(sum)==(magnitude+next)/2 { expected += 1 }
                     }
+                    if mode == 2 && outputIndex == 5 { expected = rhs[i] }
                     if output[i] != expected { mismatches += 1 }
                 }
                 XCTAssertEqual(mismatches,0,"mode=\(mode) buffer=\(outputIndex)")

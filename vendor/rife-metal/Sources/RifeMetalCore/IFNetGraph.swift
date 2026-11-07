@@ -15,10 +15,18 @@ public enum IFNetError: Error {
 /// One instance is bound to a fixed (width, height, internalScale); rebuild for new
 /// resolutions or new tiers.
 public final class IFNetGraph {
+    /// Last successful stream inference batch, read on the owning serial queue.
+    /// Span covers all timesteps and MPS internal splits, including scheduling
+    /// gaps. CPU wait overlaps GPU span; these values must never be added.
+    public private(set) var lastStreamTiming: (gpuSpanMS: Double, cpuWaitMS: Double)?
+    /// Host wall times for successful preparation only. Compile includes graph
+    /// construction and synchronous compilation. Probe -1 means not requested.
+    public private(set) var preparationTiming = (poolMS: 0.0, compileMS: 0.0, probeMS: -1.0)
     private var accumulationRounding: SIMD2<UInt32>?
 
     package let context: InferenceContext
     private let weights: WeightStore
+    private var replacesStageMask: Bool { weights.header.replacesStageMask }
     /// Full padded resolution (the output dims).
     private let width: Int
     private let height: Int
@@ -34,13 +42,26 @@ public final class IFNetGraph {
     /// Pre-allocated buffer/texture pool — eliminates per-call GPU heap traffic.
     private let pool: BufferPool
 
-    /// Pairs an MPSGraphExecutable with the ordered list of placeholder tensors
-    /// it was compiled against — required for deterministic input ordering at runtime.
-    private struct CompiledStage {
-        let executable: MPSGraphExecutable
-        /// Placeholders in the exact order the feeds dict was built; mirrors the order
-        /// in which runtime MPSGraphTensorData values must be supplied to encode(to:inputs:).
-        let inputTensors: [MPSGraphTensor]
+    /// Serial inference queue only, after synchronous inference has returned.
+    /// Keep compiled executables and scratch workspace for fast seek recovery.
+    public func releaseTransientCaches() {
+        CVMetalTextureCacheFlush(textureCache, 0)
+        pool.releaseCachedTimesteps()
+    }
+
+    private typealias CompiledStage = IFNetCompiledStage
+    private let compiledProgram: IFNetCompiledProgram
+    private var compilationKey: IFNetCompilationKey?
+    private var compilationTicket: UInt64 = 0
+    private var cacheReusable = true
+    public private(set) var compilationCacheHit = false
+
+    deinit {
+        // Public inference calls finish their submitted GPU work before return.
+        // Any throwing call poisons reuse, even if a later call succeeds.
+        if cacheReusable, let compilationKey {
+            IFNetCompiledProgram.cache.put(compiledProgram, key:compilationKey, ticket:compilationTicket)
+        }
     }
 
     private let stageExecutables: [CompiledStage]
@@ -50,25 +71,27 @@ public final class IFNetGraph {
 
     /// Pre-compiled element-wise add for two [1, internalH, internalW, 4] flow tensors (fp16).
     private let addFlowExecutable: MPSGraphExecutable
-    /// Pre-compiled element-wise add for two [1, internalH, internalW, 1] mask tensors (fp16).
-    private let addMaskExecutable: MPSGraphExecutable
+    /// Optional legacy mask-add graph; official supported models replace stage masks.
+    private let addMaskExecutable: MPSGraphExecutable?
 
 
     public init(context: InferenceContext,
                 weights: WeightStore,
                 width: Int,
                 height: Int,
-                internalScale: Double = 1.0) throws {
+                internalScale: Double = 1.0,
+                checkCancellation: () throws -> Void = {}) throws {
+        try checkCancellation()
         guard internalScale > 0.0 && internalScale <= 1.0 else {
             throw IFNetError.invalidInternalScale("internalScale must be in (0, 1], got \(internalScale)")
         }
         let intW = Int((Double(width) * internalScale).rounded(.toNearestOrAwayFromZero))
         let intH = Int((Double(height) * internalScale).rounded(.toNearestOrAwayFromZero))
-        guard intW >= 32, intH >= 32, intW % 32 == 0, intH % 32 == 0 else {
+        let alignment = max(32, (weights.header.scaleList.max() ?? 8) * 4)
+        guard intW >= alignment, intH >= alignment, intW % alignment == 0, intH % alignment == 0 else {
             throw IFNetError.invalidInternalScale(
                 "internalScale=\(internalScale) with padded \(width)x\(height) yields internal " +
-                "\(intW)x\(intH); must be >=32 and multiple of 32 (caller's padding multiple should " +
-                "be 32/internalScale)."
+                "\(intW)x\(intH); must align to \(alignment) internal pixels."
             )
         }
 
@@ -93,6 +116,7 @@ public final class IFNetGraph {
 
         // Allocate the persistent buffer/texture pool before compiling executables so that
         // any out-of-memory error surfaces early (at warmup, not mid-inference).
+        let poolStart = ProcessInfo.processInfo.systemUptime
         let pool = try BufferPool(
             device: context.device,
             paddedW: width,
@@ -102,6 +126,7 @@ public final class IFNetGraph {
             internalScale: internalScale
         )
         self.pool = pool
+        preparationTiming.poolMS = (ProcessInfo.processInfo.systemUptime - poolStart) * 1000
         if ProcessInfo.processInfo.environment["RIFE_VERBOSE"] == "1" {
             let heapStatus = pool.heap != nil ? "MTLHeap" : "per-buffer fallback"
             let heapMB = pool.heap.map { Double($0.size) / 1024 / 1024 } ?? 0
@@ -115,43 +140,87 @@ public final class IFNetGraph {
             FileHandle.standardError.write(Data(msg.utf8))
         }
 
-        // Compile encoder Head (once per IFNetGraph instance).
-        self.encoderExecutable = try Self.compileEncoderHead(
-            context: context,
-            weights: weights,
-            width: intW,
-            height: intH
-        )
-
-        var execs: [CompiledStage] = []
-        for (i, scale) in weights.header.scaleList.enumerated() {
-            let stage = try Self.compileStageExecutable(
+        let disableAutoLayout = ProcessInfo.processInfo.environment["IIVE_RIFE_DISABLE_AUTO_LAYOUT"] == "1"
+        // Limit idle retention to one small inference shape and a bounded model
+        // artifact. MPSGraph doesn't expose complete executable memory accounting;
+        // these are admission limits, not a claim of an exact byte footprint.
+        let eligible = IFNetCompilationKey.accepts(width:intW, height:intH, modelBytes:weights.artifactByteCount) &&
+            ProcessInfo.processInfo.environment["IIVE_RIFE_DISABLE_COMPILED_CACHE"] != "1"
+        var cachedProgram: IFNetCompiledProgram?
+        if eligible {
+            let key = IFNetCompilationKey(device:ObjectIdentifier(context.device),
+                modelDigest:weights.compilationDigest, width:width, height:height,
+                scale:internalScale, disableAutoLayout:disableAutoLayout)
+            let checkout = IFNetCompiledProgram.cache.take(key)
+            compilationKey = key; compilationTicket = checkout.ticket
+            cachedProgram = checkout.value
+        }
+        let compileStart = ProcessInfo.processInfo.systemUptime
+        if let cachedProgram {
+            try checkCancellation()
+            encoderExecutable = cachedProgram.encoder
+            stageExecutables = cachedProgram.stages
+            addFlowExecutable = cachedProgram.flow
+            addMaskExecutable = cachedProgram.mask
+            compiledProgram = cachedProgram
+            compilationCacheHit = true
+        } else {
+            // Compile encoder Head (once per IFNetGraph instance).
+            try checkCancellation()
+            self.encoderExecutable = try Self.compileEncoderHead(
                 context: context,
                 weights: weights,
-                stageIndex: i,
-                scale: scale,
                 width: intW,
-                height: intH
+                height: intH, disableAutoLayout: disableAutoLayout
             )
-            execs.append(stage)
-        }
-        self.stageExecutables = execs
 
-        self.addFlowExecutable = Self.compileAddExecutable(
-            context: context,
-            shape: [1, NSNumber(value: intH), NSNumber(value: intW), 4],
-            name: "addFlow"
-        )
-        self.addMaskExecutable = Self.compileAddExecutable(
-            context: context,
-            shape: [1, NSNumber(value: intH), NSNumber(value: intW), 1],
-            name: "addMask"
-        )
+            var execs: [CompiledStage] = []
+            for (i, scale) in weights.header.scaleList.enumerated() {
+                try checkCancellation()
+                let stage = try Self.compileStageExecutable(
+                    context: context,
+                    weights: weights,
+                    stageIndex: i,
+                    scale: scale,
+                    width: intW,
+                    height: intH, disableAutoLayout: disableAutoLayout
+                )
+                execs.append(stage)
+            }
+            self.stageExecutables = execs
+
+            try checkCancellation()
+            self.addFlowExecutable = Self.compileAddExecutable(
+                context: context,
+                shape: [1, NSNumber(value: intH), NSNumber(value: intW), 4],
+                name: "addFlow", disableAutoLayout: disableAutoLayout
+            )
+            try checkCancellation()
+            self.addMaskExecutable = weights.header.replacesStageMask ? nil : Self.compileAddExecutable(
+                context: context,
+                shape: [1, NSNumber(value: intH), NSNumber(value: intW), 1],
+                name: "addMask", disableAutoLayout: disableAutoLayout
+            )
+            compiledProgram = IFNetCompiledProgram(device:context.device, encoder:encoderExecutable,
+                stages:stageExecutables, flow:addFlowExecutable, mask:addMaskExecutable)
+        }
+        preparationTiming.compileMS = compilationCacheHit ? 0 : (ProcessInfo.processInfo.systemUptime - compileStart) * 1000
+        let probeStart = ProcessInfo.processInfo.systemUptime
         // 编译后只探测一次真实后端的舍入；未知行为保留原 graph，不能按设备猜测。
+        try checkCancellation()
         if internalScale <= 0.5,
-           let flow = Self.probeAdditionRounding(context: context, executable: addFlowExecutable, width: intW, height: intH, channels: 4),
-           let mask = Self.probeAdditionRounding(context: context, executable: addMaskExecutable, width: intW, height: intH, channels: 1) {
-            accumulationRounding = SIMD2(flow, mask)
+           let flow = Self.probeAdditionRounding(context: context, executable: addFlowExecutable, width: intW, height: intH, channels: 4) {
+            if weights.header.replacesStageMask {
+                // No mask-add graph or rounding probe is needed for replacement.
+                accumulationRounding = SIMD2(flow, 2)
+            } else if let executable = addMaskExecutable,
+                      let mask = Self.probeAdditionRounding(context: context, executable: executable, width: intW, height: intH, channels: 1) {
+                accumulationRounding = SIMD2(flow, mask)
+            }
+        }
+        if internalScale <= 0.5 {
+            preparationTiming.probeMS = (ProcessInfo.processInfo.systemUptime - probeStart) * 1000
+            if accumulationRounding == nil { cacheReusable = false }
         }
     }
 
@@ -165,29 +234,13 @@ public final class IFNetGraph {
               let rawCommand = context.commandQueue.makeCommandBuffer() else { return nil }
         let ap = a.contents().bindMemory(to: UInt16.self, capacity: count)
         let bp = b.contents().bindMemory(to: UInt16.self, capacity: count)
-        // 输入及符号模式每 63486 个元素完整重复；只计算一个周期，仍校验全部输出。
-        let patternCount = min(count, 0x7bff * 2)
-        var evenPattern = [UInt16](repeating: 0, count: patternCount)
-        var awayPattern = [UInt16](repeating: 0, count: patternCount)
-        for i in 0..<patternCount {
-            ap[i] = UInt16((i * 73) % 0x7bff) | (i.isMultiple(of: 2) ? 0x8000 : 0)
-            bp[i] = UInt16((i * 193 + 79) % 0x7bff) | (i.isMultiple(of: 3) ? 0x8000 : 0)
-            let exact = Float(Float16(bitPattern: ap[i])) + Float(Float16(bitPattern: bp[i]))
-            let even = Float16(exact).bitPattern
-            var away = even
-            let magnitude = abs(Float(Float16(bitPattern: even)))
-            if magnitude < abs(exact), even & 0x7fff < 0x7bff {
-                let next = Float(Float16(bitPattern: (even & 0x7fff) + 1))
-                if abs(exact) == (magnitude + next) / 2 { away = even + 1 }
-            }
-            evenPattern[i] = even
-            awayPattern[i] = away
-        }
-        var offset = patternCount
+        let pattern = AdditionRoundingPattern.forCount(count)
+        let patternCount = pattern.lhs.count
+        var offset = 0
         while offset < count {
             let length = min(patternCount, count - offset)
-            ap.advanced(by: offset).update(from: ap, count: length)
-            bp.advanced(by: offset).update(from: bp, count: length)
+            pattern.lhs.withUnsafeBufferPointer { ap.advanced(by:offset).update(from:$0.baseAddress!, count:length) }
+            pattern.rhs.withUnsafeBufferPointer { bp.advanced(by:offset).update(from:$0.baseAddress!, count:length) }
             offset += length
         }
         let shape: [NSNumber] = [1, NSNumber(value: height), NSNumber(value: width), NSNumber(value: channels)]
@@ -210,7 +263,7 @@ public final class IFNetGraph {
                 return true
             }
         }
-        return matches(evenPattern) ? 0 : matches(awayPattern) ? 1 : nil
+        return matches(pattern.nearestEven) ? 0 : matches(pattern.nearestAway) ? 1 : nil
         #else
         // Intel 的 Swift 工具链不支持这些 Float16 转换，保留原 MPSGraph 累加路径。
         return nil
@@ -220,7 +273,7 @@ public final class IFNetGraph {
     /// Compiles a tiny element-wise addition graph for a fixed shape, ready to encode onto a command buffer.
     private static func compileAddExecutable(context: InferenceContext,
                                               shape: [NSNumber],
-                                              name: String) -> MPSGraphExecutable {
+                                              name: String, disableAutoLayout: Bool) -> MPSGraphExecutable {
         let g = MPSGraph()
         let a = g.placeholder(shape: shape, dataType: .float16, name: "\(name).a")
         let b = g.placeholder(shape: shape, dataType: .float16, name: "\(name).b")
@@ -233,16 +286,21 @@ public final class IFNetGraph {
                           feeds: feeds,
                           targetTensors: [sum],
                           targetOperations: nil,
-                          compilationDescriptor: Self.compilationDescriptor())
+                          compilationDescriptor: Self.compilationDescriptor(disableAutoLayout:disableAutoLayout))
     }
 
     /// macOS 27 enables automatic convolution layout conversion on M5 by default.
     /// Keep that optimized path. The opt-out exists only for reproducible A/B profiling.
-    private static func compilationDescriptor() -> MPSGraphCompilationDescriptor {
+    private static func compilationDescriptor(disableAutoLayout: Bool) -> MPSGraphCompilationDescriptor {
         let descriptor = MPSGraphCompilationDescriptor()
         descriptor.optimizationLevel = .level1
+        // Compile on the model worker, with an explicit lifetime boundary.
+        // Very short clips / canceled preparation can release an executable
+        // before its first inference. Do not leave specialization outstanding
+        // when that worker returns and its graph can be torn down.
+        descriptor.waitForCompilationCompletion = true
         if #available(macOS 27.0, *),
-           ProcessInfo.processInfo.environment["IIVE_RIFE_DISABLE_AUTO_LAYOUT"] == "1" {
+           disableAutoLayout {
             descriptor.disableAutoLayoutConversion()
         }
         return descriptor
@@ -256,7 +314,7 @@ public final class IFNetGraph {
     private static func compileEncoderHead(context: InferenceContext,
                                             weights: WeightStore,
                                             width: Int,
-                                            height: Int) throws -> MPSGraphExecutable {
+                                            height: Int, disableAutoLayout: Bool) throws -> MPSGraphExecutable {
         let g = MPSGraph()
 
         let img = g.placeholder(shape: [1, NSNumber(value: height), NSNumber(value: width), 3],
@@ -304,7 +362,7 @@ public final class IFNetGraph {
                           feeds: feeds,
                           targetTensors: [out],
                           targetOperations: nil,
-                          compilationDescriptor: Self.compilationDescriptor())
+                          compilationDescriptor: Self.compilationDescriptor(disableAutoLayout:disableAutoLayout))
     }
 
     // MARK: - Stage executable compilation
@@ -314,7 +372,7 @@ public final class IFNetGraph {
                                                 stageIndex: Int,
                                                 scale: Int,
                                                 width: Int,
-                                                height: Int) throws -> CompiledStage {
+                                                height: Int, disableAutoLayout: Bool) throws -> CompiledStage {
         let g = MPSGraph()
         let mpsDevice = context.mpsGraphDevice
 
@@ -391,7 +449,7 @@ public final class IFNetGraph {
                               feeds: feeds,
                               targetTensors: [flow, mask, feat],
                               targetOperations: nil,
-                              compilationDescriptor: Self.compilationDescriptor())
+                              compilationDescriptor: Self.compilationDescriptor(disableAutoLayout:disableAutoLayout))
         return CompiledStage(executable: exec, inputTensors: orderedInputs)
     }
 
@@ -410,7 +468,9 @@ public final class IFNetGraph {
                     current:  CVPixelBuffer,
                     output:   CVPixelBuffer,
                     timestep: Float = 0.5) throws {
-        pool.setTimestep(timestep)
+        var completed = false
+        defer { if !completed { cacheReusable = false } }
+        let timestepBuffer = try pool.timestepBuffer(timestep)
         let verbose = ProcessInfo.processInfo.environment["RIFE_VERBOSE"] == "1"
         let dumpDir = ProcessInfo.processInfo.environment["RIFE_DUMP_DIR"]
         let benchStart = verbose ? DispatchTime.now() : nil
@@ -445,7 +505,7 @@ public final class IFNetGraph {
 
         let img0IntTD = MPSGraphTensorData(p.img0IntBuf, shape: intRGBShape,  dataType: .float16)
         let img1IntTD = MPSGraphTensorData(p.img1IntBuf, shape: intRGBShape,  dataType: .float16)
-        let tTD       = MPSGraphTensorData(p.tBuf,       shape: maskShape,    dataType: .float16)
+        let tTD       = MPSGraphTensorData(timestepBuffer, shape: maskShape,    dataType: .float16)
 
         // Encoder feature tensor-data descriptors.
         let f0TD = MPSGraphTensorData(p.f0Buf, shape: intFeat4Shape, dataType: .float16)
@@ -576,7 +636,7 @@ public final class IFNetGraph {
         //
         // Ping-pong accumulator pattern for flow/mask (identical to v4.6):
         //   Stage 0: write directly into flowAccBufA / maskAccBufA (no add).
-        //   Stage i>0: write raw into flowRawBuf / maskRawBuf; add(acc, raw) → opposite slot.
+        //   Stage i>0: write raw flow/mask; add flow, replace official model masks into opposite slots.
         //
         // Ping-pong for feat:
         //   Stage 0: write into stageFeatBufA.
@@ -689,10 +749,8 @@ public final class IFNetGraph {
                                               inputs: [prevFlowTD, flowRawTD],
                                               results: [newFlowAccTD],
                                               executionDescriptor: nil)
-                _ = addMaskExecutable.encode(to: mpsCB,
-                                              inputs: [prevMaskTD, maskRawTD],
-                                              results: [newMaskAccTD],
-                                              executionDescriptor: nil)
+                try encodeStageMask(to: mpsCB, previous: prevMaskTD, raw: maskRawTD,
+                                        output: newMaskAccTD, outputBuffer: newMaskAccBuf)
 
                 accFlowTD    = newFlowAccTD
                 accMaskTD    = newMaskAccTD
@@ -866,6 +924,8 @@ public final class IFNetGraph {
 
         mpsCB.commit()
         mpsCB.waitUntilCompleted()
+        if let error = mpsCB.commandBuffer.error { throw error }
+        completed = true
     }
 
     // MARK: - Stream encoding
@@ -877,6 +937,8 @@ public final class IFNetGraph {
                             featBufOut:    MTLBuffer,
                             imgIntBufOut:  MTLBuffer,
                             imgFullBufOut: MTLBuffer) throws {
+        var completed = false
+        defer { if !completed { cacheReusable = false } }
         let queue = context.commandQueue
         let conv = context.conversionKernels
         let useInternalScale = internalScale != 1.0
@@ -927,6 +989,8 @@ public final class IFNetGraph {
 
         mpsCB.commit()
         mpsCB.waitUntilCompleted()
+        if let error = mpsCB.commandBuffer.error { throw error }
+        completed = true
     }
 
     // MARK: - Stream inference
@@ -935,13 +999,17 @@ public final class IFNetGraph {
     /// prev*Buf are caller-provided buffers populated from a prior encodeFrame
     /// or runStream call (no encoder runs on prev). Encoder runs only on curr,
     /// writing to curr*Buf. All 5 IFBlock stages, final warp+blend, and BGRA
-    /// writeout proceed normally. Single MTLCommandBuffer, committed once.
+    /// writeout proceed normally. Ordered command buffers per timestep, with
+    /// preprocessing folded into the first and one final CPU wait (except dumps).
     public func runStream(curr:           CVPixelBuffer,
                           prevFeatBuf:    MTLBuffer, currFeatBuf:    MTLBuffer,
                           prevImgIntBuf:  MTLBuffer, currImgIntBuf:  MTLBuffer,
                           prevImgFullBuf: MTLBuffer, currImgFullBuf: MTLBuffer,
                           timesteps:      [Float],
                           outputs:        [CVPixelBuffer]) throws {
+        var completed = false
+        defer { if !completed { cacheReusable = false } }
+        lastStreamTiming = nil
         precondition(timesteps.count == outputs.count,
                      "timesteps and outputs must have matching counts")
         // 输出可以裁剪，但不得超出完整推理网格。
@@ -991,7 +1059,6 @@ public final class IFNetGraph {
         // Bind caller-provided prev/curr buffers for the prev/curr image and feat tensors.
         let img0IntTD = MPSGraphTensorData(prevImgIntBuf, shape: intRGBShape, dataType: .float16)
         let img1IntTD = MPSGraphTensorData(currImgIntBuf, shape: intRGBShape, dataType: .float16)
-        let tTD       = MPSGraphTensorData(p.tBuf,        shape: maskShape,   dataType: .float16)
 
         let f0TD = MPSGraphTensorData(prevFeatBuf, shape: intFeat4Shape, dataType: .float16)
         let f1TD = MPSGraphTensorData(currFeatBuf, shape: intFeat4Shape, dataType: .float16)
@@ -1015,7 +1082,19 @@ public final class IFNetGraph {
         let stageWarped0TD = MPSGraphTensorData(p.stageWarped0Buf, shape: intRGBShape, dataType: .float16)
         let stageWarped1TD = MPSGraphTensorData(p.stageWarped1Buf, shape: intRGBShape, dataType: .float16)
 
-        // 3. Single command buffer for the whole inference.
+        // Resolve immutable timestep tensors before submitting GPU work.
+        let timestepBuffers = try timesteps.map { try pool.timestepBuffer($0) }
+        var submitted: [(mps: MPSCommandBuffer, gpu: MTLCommandBuffer)] = []
+        var outputPlanes: [NV12Output] = []
+        var batchFinished = false
+        defer {
+            // Also drain on partial encoding/allocation failure before the caller
+            // can reset or reuse the pool and streaming prev/curr buffers.
+            if !batchFinished { submitted.last?.mps.waitUntilCompleted() }
+            withExtendedLifetime((timestepBuffers, outputPlanes, outputs)) {}
+        }
+
+        // 3. Preprocessing shares the first timestep's command buffer.
         guard let cb = queue.makeCommandBuffer() else {
             throw IFNetError.commandBufferFailed("makeCommandBuffer failed")
         }
@@ -1101,20 +1180,12 @@ public final class IFNetGraph {
             enc.endEncoding()
         }
 
-        // 4. Per-timestep: set t, run all 5 stages, then full-res warp+blend+writeout.
-        //    Mirrors `interpolate(timesteps:)` which calls run() per timestep.
-        //    Encoder Head + RGB conversions + texture expansions above are timestep-independent
-        //    and run once. For multi-timestep we must commit the prep work first so the
-        //    fresh cb in iteration 1+ sees populated pool textures.
-        let multiTimestep = timesteps.count > 1
-        if multiTimestep {
-            mpsCB.commit()
-            mpsCB.waitUntilCompleted()
-        }
-
-        for (outIdx, t) in timesteps.enumerated() {
-            pool.setTimestep(t)
-            if multiTimestep {
+        // One ordered Metal queue and tracked scratch resources serialize GPU
+        // dependencies. CPU encoding of the next timestep can overlap execution
+        // of the previous one; there is no CPU wait between normal timesteps.
+        for outIdx in timesteps.indices {
+            let tTD = MPSGraphTensorData(timestepBuffers[outIdx], shape: maskShape, dataType: .float16)
+            if outIdx > 0 {
                 guard let cb2 = queue.makeCommandBuffer() else {
                     throw IFNetError.commandBufferFailed("per-timestep makeCommandBuffer failed")
                 }
@@ -1209,6 +1280,7 @@ public final class IFNetGraph {
                     }
 
                     if var rounding = accumulationRounding {
+                        if replacesStageMask { rounding.y = 2 }
                         guard let encoder = mpsCB.commandBuffer.makeComputeCommandEncoder() else {
                             throw IFNetError.commandBufferFailed("flow/mask accumulation encoder failed")
                         }
@@ -1229,10 +1301,8 @@ public final class IFNetGraph {
                                                       inputs: [prevFlowTD, flowRawTD],
                                                       results: [newFlowAccTD],
                                                       executionDescriptor: nil)
-                        _ = addMaskExecutable.encode(to: mpsCB,
-                                                      inputs: [prevMaskTD, maskRawTD],
-                                                      results: [newMaskAccTD],
-                                                      executionDescriptor: nil)
+                        try encodeStageMask(to: mpsCB, previous: prevMaskTD, raw: maskRawTD,
+                                        output: newMaskAccTD, outputBuffer: newMaskAccBuf)
                     }
 
                     accFlowTD    = newFlowAccTD
@@ -1259,8 +1329,10 @@ public final class IFNetGraph {
                                      to: maskStage, destinationOffset: 0, size: intMaskBytes)
                         blitEnc.endEncoding()
                     }
+                    let debugCommand = mpsCB.commandBuffer
                     mpsCB.commit()
                     mpsCB.waitUntilCompleted()
+                    if let error = debugCommand.error { throw error }
                     let flowStageTD = MPSGraphTensorData(flowStage, shape: flowShape, dataType: .float16)
                     let maskStageTD = MPSGraphTensorData(maskStage, shape: maskShape, dataType: .float16)
                     Self.dumpStageActivations(stageIndex: i,
@@ -1332,8 +1404,8 @@ public final class IFNetGraph {
                 enc.setTexture(outTex, index: 0)
                 dispatch2D(enc, conv.rgbToBGRA, gridW: width, gridH: height)
                 enc.endEncoding()
+                submitted.append((mpsCB, mpsCB.rootCommandBuffer))
                 mpsCB.commit()
-                mpsCB.waitUntilCompleted()
                 continue
             }
 
@@ -1344,7 +1416,7 @@ public final class IFNetGraph {
             let planar = CVPixelBufferGetPixelFormatType(output) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
             let nv12 = planar ? try NV12Output(output, cache: textureCache) : nil
             let packedTexture = planar ? nil : try PixelBufferConvert.makeTexture(from: output, textureCache: textureCache)
-            defer { withExtendedLifetime(nv12) {} }
+            if let nv12 { outputPlanes.append(nv12) }
 
             guard let finalEnc = mpsCB.commandBuffer.makeComputeCommandEncoder() else {
                 throw IFNetError.commandBufferFailed("final warp encoder failed")
@@ -1414,16 +1486,51 @@ public final class IFNetGraph {
                 cbRef.addCompletedHandler { cb in
                     let gpuMs = (cb.gpuEndTime - cb.gpuStartTime) * 1000
                     let kernelMs = (cb.kernelEndTime - cb.kernelStartTime) * 1000
-                    let line = String(format: "[bench] stream gpu=%.2f ms kernel=%.2f ms\n", gpuMs, kernelMs)
+                    let line = String(format: "[bench] stream last-command gpu=%.2f ms kernel=%.2f ms\n", gpuMs, kernelMs)
                     FileHandle.standardError.write(Data(line.utf8))
                 }
             }
 
-            let submitted = mpsCB.commandBuffer
+            submitted.append((mpsCB, mpsCB.rootCommandBuffer))
             mpsCB.commit()
-            mpsCB.waitUntilCompleted()
-            if let error = submitted.error { throw error }
         }  // end per-timestep loop
+        if timesteps.isEmpty {
+            submitted.append((mpsCB, mpsCB.rootCommandBuffer))
+            mpsCB.commit()
+        }
+        let waitStart = ProcessInfo.processInfo.systemUptime
+        submitted.last?.mps.waitUntilCompleted()
+        let waitMS = (ProcessInfo.processInfo.systemUptime - waitStart) * 1000
+        batchFinished = true
+        if let error = cb.error { throw error }
+        for command in submitted {
+            if let error = command.gpu.error { throw error }
+        }
+        // Dump mode inserts synchronous readbacks; do not publish misleading
+        // normal-path timings. No additional GPU waits or callbacks are added.
+        if dumpDir == nil, !timesteps.isEmpty, let last = submitted.last?.gpu {
+            let start = cb.gpuStartTime, end = last.gpuEndTime
+            if start.isFinite, end.isFinite, start > 0, end >= start {
+                lastStreamTiming = ((end - start) * 1000, waitMS)
+            }
+        }
+        completed = true
+    }
+
+    private func encodeStageMask(to command: MPSCommandBuffer,
+                                 previous: MPSGraphTensorData, raw: MPSGraphTensorData,
+                                 output: MPSGraphTensorData, outputBuffer: MTLBuffer) throws {
+        if replacesStageMask {
+            guard let blit = command.commandBuffer.makeBlitCommandEncoder() else {
+                throw IFNetError.commandBufferFailed("mask replacement encoder")
+            }
+            blit.copy(from: pool.maskRawBuf, sourceOffset: 0, to: outputBuffer,
+                      destinationOffset: 0, size: internalWidth * internalHeight * 2)
+            blit.endEncoding()
+        } else {
+            guard let addMaskExecutable else { throw IFNetError.dimensionsMismatch }
+            addMaskExecutable.encode(to: command, inputs: [previous, raw], results: [output], executionDescriptor: nil)
+        }
     }
 
     // MARK: - Per-stage debug dump (gated by RIFE_DUMP_DIR env var)

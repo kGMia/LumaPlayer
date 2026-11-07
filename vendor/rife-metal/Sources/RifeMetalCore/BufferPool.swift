@@ -39,20 +39,27 @@ final class BufferPool {
     /// Internal-res packed fp16 RGB for IFNet stage 0 image 1.
     /// When internalScale == 1.0 this is the same object as img1FullBuf.
     let img1IntBuf: MTLBuffer
-    /// Timestep tensor at internal res:  [1, intH, intW, 1]. Filled with a uniform scalar via
-    /// `setTimestep(_:)`. Initialized to 0.5 at construction so callers that never call
-    /// setTimestep see the historical t=0.5 midframe behavior.
-    let tBuf: MTLBuffer
+    // Immutable timestep tensors, keyed by the actual fp16 value. No CPU writes
+    // may race a previously submitted timestep. Eviction drops only our reference;
+    // callers/command buffers retain any tensor still in flight.
+    private let timestepDevice: MTLDevice
+    private let timestepByteCount: Int
+    private var cachedTimesteps: [(bits: UInt16, buffer: MTLBuffer)] = []
 
-    /// Rewrites every element of `tBuf` with the given uniform timestep (binary16 bit pattern).
-    /// Safe to call between runs — the previous run's GPU work has completed by the time the
-    /// caller (`IFNetGraph.run`) reaches this on the next call (run is synchronous via
-    /// `waitUntilCompleted`).
-    func setTimestep(_ t: Float) {
-        let count = tBuf.length / MemoryLayout<UInt16>.stride
-        let ptr = tBuf.contents().bindMemory(to: UInt16.self, capacity: count)
-        let h = HalfPrecision.floatToBits(t)
-        for i in 0..<count { ptr[i] = h }
+    // Caller owns the serial inference queue and has drained submitted work.
+    func releaseCachedTimesteps() { cachedTimesteps.removeAll(keepingCapacity: false) }
+
+    func timestepBuffer(_ t: Float) throws -> MTLBuffer {
+        let bits = HalfPrecision.floatToBits(t)
+        if let hit = cachedTimesteps.first(where: { $0.bits == bits }) { return hit.buffer }
+        guard let buffer = timestepDevice.makeBuffer(length: timestepByteCount, options: .storageModeShared) else {
+            throw IFNetError.textureAllocationFailed
+        }
+        let count = timestepByteCount / MemoryLayout<UInt16>.stride
+        buffer.contents().bindMemory(to: UInt16.self, capacity: count).initialize(repeating: bits, count: count)
+        if cachedTimesteps.count == 8 { cachedTimesteps.removeFirst() }
+        cachedTimesteps.append((bits, buffer))
+        return buffer
     }
 
     // MARK: Source RGBA textures (GPU-write from bgraToRGB + rgbBufToRGBATex → GPU-read in warp)
@@ -284,13 +291,15 @@ final class BufferPool {
         else { throw IFNetError.textureAllocationFailed }
         self.img0FullBuf = _img0FullBuf
         self.img1FullBuf = _img1FullBuf
-        self.tBuf = _tBuf
+        self.timestepDevice = device
+        self.timestepByteCount = intMaskBytes
 
         // Initialize tBuf with t=0.5 so a default IFNetGraph.run() with the timestep arg omitted
-        // yields the historical midframe; setTimestep(_:) overwrites this on every subsequent call.
+        // yields the historical midframe; all cached tensors remain immutable.
         let tPtr = _tBuf.contents().bindMemory(to: UInt16.self, capacity: intW * intH)
         let defaultTimestep = HalfPrecision.floatToBits(0.5)
-        for i in 0..<(intW * intH) { tPtr[i] = defaultTimestep }
+        tPtr.initialize(repeating: defaultTimestep, count: intW * intH)
+        self.cachedTimesteps = [(defaultTimestep, _tBuf)]
 
         if useInternalScale {
             guard let b0 = device.makeBuffer(length: intRGBBytes, options: .storageModeShared),

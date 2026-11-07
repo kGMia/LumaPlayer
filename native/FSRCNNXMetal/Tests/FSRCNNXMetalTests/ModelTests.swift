@@ -3,6 +3,39 @@ import Metal
 import CoreVideo
 @testable import FSRCNNXMetal
 final class ModelTests:XCTestCase {
+    func testWarmPoolKeepsHeldFramesAndClearsAttachments() throws {
+        guard ProcessInfo.processInfo.environment["IIVE_GPU_TESTS"] == "1" else { throw XCTSkip("Set IIVE_GPU_TESTS=1") }
+        let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
+        let model = try FSRCNNXModel(device: device, width: 16, height: 12)
+        let input = try model.makeInput()
+        func fill(_ value: Int32) {
+            CVPixelBufferLockBaseAddress(input, [])
+            for plane in 0..<2 {
+                memset(CVPixelBufferGetBaseAddressOfPlane(input, plane)!, plane == 0 ? value : 128,
+                       CVPixelBufferGetBytesPerRowOfPlane(input, plane) * CVPixelBufferGetHeightOfPlane(input, plane))
+            }
+            CVPixelBufferUnlockBaseAddress(input, [])
+        }
+        func firstY(_ pixels: CVPixelBuffer) -> UInt8 {
+            CVPixelBufferLockBaseAddress(pixels, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+            return CVPixelBufferGetBaseAddressOfPlane(pixels, 0)!.load(as: UInt8.self)
+        }
+        fill(64)
+        let held = try model.process(input), original = firstY(held)
+        fill(180)
+        let key = "IIVEPoolTestAttachment" as CFString
+        for _ in 0..<4 {
+            try autoreleasepool {
+                let next = try model.process(input)
+                XCTAssertFalse(next === held)
+                XCTAssertNil(CVBufferCopyAttachment(next, key, nil))
+                CVBufferSetAttachment(next, key, "old frame" as CFString, .shouldPropagate)
+            }
+            model.releaseUnusedResources()
+        }
+        XCTAssertEqual(firstY(held), original, "Pool reuse overwrote a downstream-held frame")
+    }
     func testTrainedModelsAgainstSmallReference()throws {
         guard ProcessInfo.processInfo.environment["IIVE_GPU_TESTS"]=="1" else{throw XCTSkip("Set IIVE_GPU_TESTS=1")}
         let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),w=16,h=12

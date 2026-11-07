@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Metal
 import MetalPerformanceShadersGraph
 
@@ -13,7 +14,14 @@ public enum WeightStoreError: Error, Equatable {
 public final class WeightStore {
     public let header: RifeWeightHeader
     private let mappedData: Data
-    private let blobOffset: Int
+    /// Identity comes from validated artifact bytes, never a filename or mtime.
+    let compilationDigest: String
+    let artifactByteCount: Int
+    private struct TensorLocation {
+        let entry: RifeWeightHeader.TensorEntry
+        let bytes: Range<Int>
+    }
+    private let locations: [String: TensorLocation]
 
     public init(url: URL) throws {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
@@ -40,41 +48,50 @@ public final class WeightStore {
 
         let unpadded = 12 + headerLen
         let padding = (16 - (unpadded % 16)) % 16
-        self.blobOffset = unpadded + padding
+        let blobOffset = unpadded + padding
+        guard blobOffset <= data.count else { throw WeightStoreError.fileTooSmall }
+        var locations: [String: TensorLocation] = [:]
+        locations.reserveCapacity(header.tensors.count)
+        for entry in header.tensors {
+            guard locations[entry.name] == nil else {
+                throw WeightStoreError.headerParseFailed("Duplicate tensor name: \(entry.name)")
+            }
+            // Check using subtraction before addition: malformed offsets/sizes
+            // must throw, not overflow or copy bytes beyond the mapped payload.
+            guard entry.offset >= 0, entry.size >= 0,
+                  entry.offset <= data.count - blobOffset,
+                  entry.size <= data.count - blobOffset - entry.offset else {
+                throw WeightStoreError.fileTooSmall
+            }
+            let start = blobOffset + entry.offset
+            locations[entry.name] = TensorLocation(entry:entry,bytes:start..<(start+entry.size))
+        }
+        self.locations = locations
         self.mappedData = data
+        self.artifactByteCount = data.count
+        self.compilationDigest = SHA256.hash(data:data).map { String(format:"%02x", $0) }.joined()
     }
 
-    /// Returns the raw fp16 bytes for the named tensor.
+    /// All names and payload ranges are checked at initialization without copying
+    /// tensor contents. Copy bytes only when graph construction actually needs them.
     public func tensorBytes(named name: String) throws -> Data {
-        guard let entry = header.tensors.first(where: { $0.name == name }) else {
+        guard let location = locations[name] else {
             throw WeightStoreError.tensorNotFound(name)
         }
-        guard entry.offset >= 0, entry.size >= 0 else {
-            throw WeightStoreError.fileTooSmall
-        }
-        let start = blobOffset + entry.offset
-        let end = start + entry.size
-        guard end <= mappedData.count else { throw WeightStoreError.fileTooSmall }
-        return mappedData.subdata(in: start..<end)
+        return mappedData.subdata(in:location.bytes)
     }
 
     /// Wraps the named tensor's bytes as MPSGraphTensorData (fp16, NHWC).
     public func tensorData(named name: String,
                            on device: MTLDevice) throws -> MPSGraphTensorData {
-        guard let entry = header.tensors.first(where: { $0.name == name }) else {
+        guard let location = locations[name] else {
             throw WeightStoreError.tensorNotFound(name)
         }
-        guard entry.offset >= 0, entry.size >= 0 else {
-            throw WeightStoreError.fileTooSmall
-        }
-        let start = blobOffset + entry.offset
-        let end = start + entry.size
-        guard end <= mappedData.count else { throw WeightStoreError.fileTooSmall }
-        let bytes = mappedData.subdata(in: start ..< end)
+        let bytes = mappedData.subdata(in:location.bytes)
         return MPSGraphTensorData(
             device: MPSGraphDevice(mtlDevice: device),
             data: bytes,
-            shape: entry.shape.map(NSNumber.init),
+            shape: location.entry.shape.map(NSNumber.init),
             dataType: .float16
         )
     }

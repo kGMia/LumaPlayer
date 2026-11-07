@@ -67,3 +67,10 @@ CVPixelBufferRef iive_apple_process(void *handle,CVPixelBufferRef current,CVPixe
     return output;
 }}
 void iive_apple_destroy(void *handle) { if (handle) { id released=CFBridgingRelease(handle);(void)released; } }
+
+void iive_apple_trim(void *handle) {
+    if (!handle) return;
+    AppleEngine *engine=(__bridge AppleEngine *)handle;
+    CVPixelBufferPoolFlush(engine.inputs,kCVPixelBufferPoolFlushExcessBuffers);
+    CVPixelBufferPoolFlush(engine.outputs,kCVPixelBufferPoolFlushExcessBuffers);
+}

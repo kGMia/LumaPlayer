@@ -1,0 +1,693 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		72D6C4D9769816C813961CDA /* OnlineMovieViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */; };
+		E3751CA7010D732FEA7062D6 /* OnlineMovieMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */; };
+		04AA5FA35C65BC2BAD888B3F /* native/Player/Modern/PlaybackChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050E46C77D2BFE277D05429E /* native/Player/Modern/PlaybackChrome.swift */; };
+		222F0DBFFE5EB23DCD3FD16F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 28AAD1477D5182D66D4B03B3 /* Assets.xcassets */; };
+		395B64E4D36F56933B582EB8 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 560737C72BC60145ADB91F3E /* AppIcon.icns */; };
+		396CDFDD8C5764556A992F3E /* native/Player/Modern/PlayerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A508F50B148B681F2F5E8AE /* native/Player/Modern/PlayerSettings.swift */; };
+		51884C100DF3FADA159B3E90 /* native/Player/Modern/PlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6BF5CC668F606533FB14A64 /* native/Player/Modern/PlayerModel.swift */; };
+		56B1EFC802D3F819DAE84731 /* native/Player/Modern/PlayerActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 385A47236B082713895832C6 /* native/Player/Modern/PlayerActions.swift */; };
+		5DEA813684223A6679FB6B7D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5125EB623B0CBE798809C250 /* AppIcon.icon */; };
+		97203CFE3080D7A600F8B35C /* FrameActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97203CFD3080D7A600F8B35C /* FrameActions.swift */; };
+		97203D003080D7DE00F8B35C /* ChapterTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97203CFF3080D7DE00F8B35C /* ChapterTrack.swift */; };
+		97203D023080F60C00F8B35C /* PlayerTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97203D013080F60C00F8B35C /* PlayerTimeline.swift */; };
+		97203D0430811BB900F8B35C /* FFmpegPreviewDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97203D0330811BB900F8B35C /* FFmpegPreviewDecoder.swift */; };
+		97203D0630811CFE00F8B35C /* TimelinePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97203D0530811CFE00F8B35C /* TimelinePreview.swift */; };
+		976A32FC309E1A1000E39BBD /* SystemHDRPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 976A32FB309E1A1000E39BBD /* SystemHDRPlayback.swift */; };
+		976F0DBD309239C30059C302 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 976F0DBB309239C30059C302 /* InfoPlist.xcstrings */; };
+		976F0DBE309239C30059C302 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 976F0DBC309239C30059C302 /* Localizable.xcstrings */; };
+		97859CB57866F2D105F6E34E /* native/Player/Modern/MPVSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 70C587E4B9EF5E4527432C76 /* native/Player/Modern/MPVSession.m */; };
+		978987E8309AEA520094EED9 /* MediaSystemServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978987E7309AEA520094EED9 /* MediaSystemServices.swift */; };
+		979BADFB308222A100A25928 /* AudioArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979BADFA308222A100A25928 /* AudioArtwork.swift */; };
+		979FD9193080943C00E9DD3C /* LiveCaptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979FD9183080943C00E9DD3C /* LiveCaptions.swift */; };
+		97CE8DEC307F76DC0056D6FC /* FolderQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978D739B307F75F100441A6F /* FolderQueue.swift */; };
+		97CE8DED307F76F30056D6FC /* PlayerWindowModes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978D739C307F75F100441A6F /* PlayerWindowModes.swift */; };
+		97D22F63309CA4D200C6A434 /* BrowserDirectoryWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D22F62309CA4D200C6A434 /* BrowserDirectoryWatcher.swift */; };
+		97E143E130918A8400EC7B14 /* PlayerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E143E030918A8400EC7B14 /* PlayerIdentity.swift */; };
+		97E143E330918D6700EC7B14 /* PlayQueueActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E143E230918D6700EC7B14 /* PlayQueueActions.swift */; };
+		97E143E530918D6700EC7B14 /* PlayQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E143E430918D6700EC7B14 /* PlayQueueView.swift */; };
+		B233F4F3C7FD9B5F08B538AB /* native/Player/Modern/IIVEPlayerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 435540901424B1C0FE9C8F4D /* native/Player/Modern/IIVEPlayerApp.swift */; };
+		BED47C832246A6EC50FAE9FD /* native/Player/Modern/PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FB248D2E264EE3289F3C24 /* native/Player/Modern/PlayerView.swift */; };
+		C4FDAF05A32B9800D190A0A8 /* PlayerSystem/QueueMetadataValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288AC5ED3DC3D45595BD9AEF /* PlayerSystem/QueueMetadataValue.swift */; };
+		CA08A6277DD72FEC79E39DC5 /* native/Player/VideoView.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAABF5779BB0244DDE83E10 /* native/Player/VideoView.m */; };
+		CD24BEF207F71A9DA469863B /* PlayerSystem/MediaReadScheduling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2FF3D242807477D85603AF /* PlayerSystem/MediaReadScheduling.swift */; };
+		E2767C2353A3138F8473D393 /* native/Player/Modern/VideoInformation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62D9B92CE173D8D3B8C444F /* native/Player/Modern/VideoInformation.swift */; };
+		ECAB285731BBA91F7355F3F0 /* PlayerSystem/QueueMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651B35DB6782DD25CFD4DBE1 /* PlayerSystem/QueueMetadata.swift */; };
+		EF5170000000000000000002 /* RIFEPerformancePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5170000000000000000001 /* RIFEPerformancePolicy.swift */; };
+		EF5190000000000000000002 /* NetworkMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5190000000000000000001 /* NetworkMedia.swift */; };
+		EF5190000000000000000012 /* NetworkMediaSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5190000000000000000011 /* NetworkMediaSheet.swift */; };
+		EF5190000000000000000022 /* NetworkServers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5190000000000000000021 /* NetworkServers.swift */; };
+		EF5200000000000000000002 /* native/Player/Modern/RemoteMediaProbe.m in Sources */ = {isa = PBXBuildFile; fileRef = EF5200000000000000000001 /* native/Player/Modern/RemoteMediaProbe.m */; };
+		EF5200000000000000000012 /* RemoteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5200000000000000000011 /* RemoteQueue.swift */; };
+		EF5210000000000000000012 /* PlayerSystem/OneDriveGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5210000000000000000011 /* PlayerSystem/OneDriveGraph.swift */; };
+		EF5210000000000000000022 /* PlayerSystem/OneDriveAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5210000000000000000021 /* PlayerSystem/OneDriveAccount.swift */; };
+		EF5210000000000000000032 /* PlayerSystem/OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5210000000000000000031 /* PlayerSystem/OneDriveClient.swift */; };
+		EF5210000000000000000042 /* PlayerSystem/OneDriveBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5210000000000000000041 /* PlayerSystem/OneDriveBrowser.swift */; };
+		EF5210000000000000000093 /* MSAL in Frameworks */ = {isa = PBXBuildFile; productRef = EF5210000000000000000092 /* MSAL */; };
+		EF5220000000000000000002 /* RemoteMetadataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5220000000000000000001 /* RemoteMetadataCache.swift */; };
+		EF5220000000000000000012 /* PlaybackMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5220000000000000000011 /* PlaybackMemory.swift */; };
+		EF5220000000000000000022 /* RemotePlaybackMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5220000000000000000021 /* RemotePlaybackMemory.swift */; };
+		EF5220000000000000000032 /* PlaybackActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5220000000000000000031 /* PlaybackActivity.swift */; };
+		EF5230000000000000000002 /* RemoteBrowserState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000001 /* RemoteBrowserState.swift */; };
+		EF5230000000000000000012 /* RemoteDirectoryList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000011 /* RemoteDirectoryList.swift */; };
+		EF5230000000000000000022 /* FileDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000021 /* FileDialogs.swift */; };
+		EF5230000000000000000032 /* LiveTextWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000031 /* LiveTextWindow.swift */; };
+		EF5230000000000000000042 /* PlayerWindowLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000041 /* PlayerWindowLifecycle.swift */; };
+		EF5230000000000000000052 /* PlaybackShortcutPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000051 /* PlaybackShortcutPolicy.swift */; };
+		EF5230000000000000000062 /* PlayerKeyboardFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5230000000000000000061 /* PlayerKeyboardFocus.swift */; };
+		EF5240000000000000000002 /* PlaybackPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5240000000000000000001 /* PlaybackPreferences.swift */; };
+		EF5240000000000000000012 /* PlaybackPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5240000000000000000011 /* PlaybackPreferencesView.swift */; };
+		EF5241000000000000000002 /* PlaybackGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5241000000000000000001 /* PlaybackGeometry.swift */; };
+		EF5241000000000000000012 /* PlaybackGeometryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5241000000000000000011 /* PlaybackGeometryView.swift */; };
+		EF5270000000000000000002 /* native/Player/Modern/LocalVideoPreview.m in Sources */ = {isa = PBXBuildFile; fileRef = EF5270000000000000000001 /* native/Player/Modern/LocalVideoPreview.m */; };
+		F41C15439C2C95B1AC0713B2 /* native/Player/Experimental/IIVEEDRBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = AF6872672B7716491A76BD9C /* native/Player/Experimental/IIVEEDRBridge.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMovieViews.swift; sourceTree = "<group>"; };
+		0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMovieMetadata.swift; sourceTree = "<group>"; };
+		050E46C77D2BFE277D05429E /* native/Player/Modern/PlaybackChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlaybackChrome.swift; sourceTree = SOURCE_ROOT; };
+		06EF147DC6D846B896C555F9 /* native/mpv-filter/vf_iive_rife.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "native/mpv-filter/vf_iive_rife.c"; sourceTree = SOURCE_ROOT; };
+		0B2FF3D242807477D85603AF /* PlayerSystem/MediaReadScheduling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/MediaReadScheduling.swift; sourceTree = SOURCE_ROOT; };
+		0BDB68F19A6422CE14DC8BF7 /* native/FSRCNNXMetal/Sources/FSRCNNXMetal/FSRCNNXModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/FSRCNNXMetal/Sources/FSRCNNXMetal/FSRCNNXModel.swift; sourceTree = SOURCE_ROOT; };
+		0FAABF5779BB0244DDE83E10 /* native/Player/VideoView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/Player/VideoView.m; sourceTree = SOURCE_ROOT; };
+		288AC5ED3DC3D45595BD9AEF /* PlayerSystem/QueueMetadataValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/QueueMetadataValue.swift; sourceTree = SOURCE_ROOT; };
+		28AAD1477D5182D66D4B03B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		2A508F50B148B681F2F5E8AE /* native/Player/Modern/PlayerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlayerSettings.swift; sourceTree = SOURCE_ROOT; };
+		385A47236B082713895832C6 /* native/Player/Modern/PlayerActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlayerActions.swift; sourceTree = SOURCE_ROOT; };
+		38812069282450D5129C8A59 /* native/Player/VideoView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/Player/VideoView.h; sourceTree = SOURCE_ROOT; };
+		38A007151ABE87CC01A5B6E9 /* Luma Player.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = "Luma Player.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		435540901424B1C0FE9C8F4D /* native/Player/Modern/IIVEPlayerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/IIVEPlayerApp.swift; sourceTree = SOURCE_ROOT; };
+		5125EB623B0CBE798809C250 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = SOURCE_ROOT; };
+		5491B328165D7B5C5AE5C48E /* native/mpv-filter/iive_surface.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "native/mpv-filter/iive_surface.c"; sourceTree = SOURCE_ROOT; };
+		560737C72BC60145ADB91F3E /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = SOURCE_ROOT; };
+		5DF2A7D0F5A23C750FD2D67E /* native/Player/Experimental/IIVEEDRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/Player/Experimental/IIVEEDRBridge.h; sourceTree = SOURCE_ROOT; };
+		5F3A817C03FC63BDEF494512 /* native/Player/Modern/MPVSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/Player/Modern/MPVSession.h; sourceTree = SOURCE_ROOT; };
+		651B35DB6782DD25CFD4DBE1 /* PlayerSystem/QueueMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/QueueMetadata.swift; sourceTree = SOURCE_ROOT; };
+		70C587E4B9EF5E4527432C76 /* native/Player/Modern/MPVSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/Player/Modern/MPVSession.m; sourceTree = SOURCE_ROOT; };
+		77714BB2E50B448C74A642AF /* native/AppleBackend/AppleBackend.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/AppleBackend/AppleBackend.m; sourceTree = SOURCE_ROOT; };
+		97203CFD3080D7A600F8B35C /* FrameActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameActions.swift; sourceTree = "<group>"; };
+		97203CFF3080D7DE00F8B35C /* ChapterTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterTrack.swift; sourceTree = "<group>"; };
+		97203D013080F60C00F8B35C /* PlayerTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerTimeline.swift; sourceTree = "<group>"; };
+		97203D0330811BB900F8B35C /* FFmpegPreviewDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegPreviewDecoder.swift; sourceTree = "<group>"; };
+		97203D0530811CFE00F8B35C /* TimelinePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelinePreview.swift; sourceTree = "<group>"; };
+		976A32FB309E1A1000E39BBD /* SystemHDRPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemHDRPlayback.swift; sourceTree = "<group>"; };
+		976F0DBB309239C30059C302 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		976F0DBC309239C30059C302 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		978987E7309AEA520094EED9 /* MediaSystemServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSystemServices.swift; sourceTree = "<group>"; };
+		978D739B307F75F100441A6F /* FolderQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderQueue.swift; sourceTree = "<group>"; };
+		978D739C307F75F100441A6F /* PlayerWindowModes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerWindowModes.swift; sourceTree = "<group>"; };
+		979BADFA308222A100A25928 /* AudioArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioArtwork.swift; sourceTree = "<group>"; };
+		979FD9183080943C00E9DD3C /* LiveCaptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptions.swift; sourceTree = "<group>"; };
+		97D22F62309CA4D200C6A434 /* BrowserDirectoryWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDirectoryWatcher.swift; sourceTree = "<group>"; };
+		97E143E030918A8400EC7B14 /* PlayerIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerIdentity.swift; sourceTree = "<group>"; };
+		97E143E230918D6700EC7B14 /* PlayQueueActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayQueueActions.swift; sourceTree = "<group>"; };
+		97E143E430918D6700EC7B14 /* PlayQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayQueueView.swift; sourceTree = "<group>"; };
+		A188CF8E762A85945B790FD9 /* native/mpv-filter/vf_iive_apple.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "native/mpv-filter/vf_iive_apple.c"; sourceTree = SOURCE_ROOT; };
+		ABE438E9C17355EC8DAF5894 /* native/mpv-filter/iive_surface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "native/mpv-filter/iive_surface.h"; sourceTree = SOURCE_ROOT; };
+		AF6872672B7716491A76BD9C /* native/Player/Experimental/IIVEEDRBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/Player/Experimental/IIVEEDRBridge.m; sourceTree = SOURCE_ROOT; };
+		B2FB248D2E264EE3289F3C24 /* native/Player/Modern/PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlayerView.swift; sourceTree = SOURCE_ROOT; };
+		B6BF5CC668F606533FB14A64 /* native/Player/Modern/PlayerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlayerModel.swift; sourceTree = SOURCE_ROOT; };
+		DC2B0DC8473F5AA5C36C22FC /* native/AppleBackend/IIVEApple.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/AppleBackend/IIVEApple.h; sourceTree = SOURCE_ROOT; };
+		E6FBC60F766C8F705B0C43AB /* native/Player/Modern/Player-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "native/Player/Modern/Player-Bridging-Header.h"; sourceTree = SOURCE_ROOT; };
+		EF5170000000000000000001 /* RIFEPerformancePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RIFEPerformancePolicy.swift; sourceTree = "<group>"; };
+		EF5190000000000000000001 /* NetworkMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMedia.swift; sourceTree = "<group>"; };
+		EF5190000000000000000011 /* NetworkMediaSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMediaSheet.swift; sourceTree = "<group>"; };
+		EF5190000000000000000021 /* NetworkServers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkServers.swift; sourceTree = "<group>"; };
+		EF5200000000000000000001 /* native/Player/Modern/RemoteMediaProbe.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/Player/Modern/RemoteMediaProbe.m; sourceTree = SOURCE_ROOT; };
+		EF5200000000000000000011 /* RemoteQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteQueue.swift; sourceTree = "<group>"; };
+		EF5210000000000000000011 /* PlayerSystem/OneDriveGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/OneDriveGraph.swift; sourceTree = SOURCE_ROOT; };
+		EF5210000000000000000021 /* PlayerSystem/OneDriveAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/OneDriveAccount.swift; sourceTree = SOURCE_ROOT; };
+		EF5210000000000000000031 /* PlayerSystem/OneDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/OneDriveClient.swift; sourceTree = SOURCE_ROOT; };
+		EF5210000000000000000041 /* PlayerSystem/OneDriveBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSystem/OneDriveBrowser.swift; sourceTree = SOURCE_ROOT; };
+		EF5220000000000000000001 /* RemoteMetadataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMetadataCache.swift; sourceTree = "<group>"; };
+		EF5220000000000000000011 /* PlaybackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackMemory.swift; sourceTree = "<group>"; };
+		EF5220000000000000000021 /* RemotePlaybackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePlaybackMemory.swift; sourceTree = "<group>"; };
+		EF5220000000000000000031 /* PlaybackActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackActivity.swift; sourceTree = "<group>"; };
+		EF5230000000000000000001 /* RemoteBrowserState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteBrowserState.swift; sourceTree = "<group>"; };
+		EF5230000000000000000011 /* RemoteDirectoryList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryList.swift; sourceTree = "<group>"; };
+		EF5230000000000000000021 /* FileDialogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDialogs.swift; sourceTree = "<group>"; };
+		EF5230000000000000000031 /* LiveTextWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTextWindow.swift; sourceTree = "<group>"; };
+		EF5230000000000000000041 /* PlayerWindowLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerWindowLifecycle.swift; sourceTree = "<group>"; };
+		EF5230000000000000000051 /* PlaybackShortcutPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackShortcutPolicy.swift; sourceTree = "<group>"; };
+		EF5230000000000000000061 /* PlayerKeyboardFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerKeyboardFocus.swift; sourceTree = "<group>"; };
+		EF5240000000000000000001 /* PlaybackPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPreferences.swift; sourceTree = "<group>"; };
+		EF5240000000000000000011 /* PlaybackPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPreferencesView.swift; sourceTree = "<group>"; };
+		EF5241000000000000000001 /* PlaybackGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackGeometry.swift; sourceTree = "<group>"; };
+		EF5241000000000000000011 /* PlaybackGeometryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackGeometryView.swift; sourceTree = "<group>"; };
+		EF5241000000000000000021 /* native/Player/Modern/VideoCrop.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/Player/Modern/VideoCrop.h; sourceTree = SOURCE_ROOT; };
+		EF5270000000000000000001 /* native/Player/Modern/LocalVideoPreview.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = native/Player/Modern/LocalVideoPreview.m; sourceTree = SOURCE_ROOT; };
+		EF5270000000000000000011 /* native/Player/Modern/LocalVideoPreview.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = native/Player/Modern/LocalVideoPreview.h; sourceTree = SOURCE_ROOT; };
+		F62D9B92CE173D8D3B8C444F /* native/Player/Modern/VideoInformation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/VideoInformation.swift; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7561BFB015D8F536760CB671 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				EF5210000000000000000093 /* MSAL in Frameworks */,
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		64292B1C2B2E13EAD8788FC8 = {
+			isa = PBXGroup;
+			children = (
+				976F0DBB309239C30059C302 /* InfoPlist.xcstrings */,
+				976F0DBC309239C30059C302 /* Localizable.xcstrings */,
+				288AC5ED3DC3D45595BD9AEF /* PlayerSystem/QueueMetadataValue.swift */,
+				651B35DB6782DD25CFD4DBE1 /* PlayerSystem/QueueMetadata.swift */,
+				0B2FF3D242807477D85603AF /* PlayerSystem/MediaReadScheduling.swift */,
+				EF5210000000000000000041 /* PlayerSystem/OneDriveBrowser.swift */,
+				EF5210000000000000000031 /* PlayerSystem/OneDriveClient.swift */,
+				EF5210000000000000000021 /* PlayerSystem/OneDriveAccount.swift */,
+				EF5210000000000000000011 /* PlayerSystem/OneDriveGraph.swift */,
+				2A508F50B148B681F2F5E8AE /* native/Player/Modern/PlayerSettings.swift */,
+				385A47236B082713895832C6 /* native/Player/Modern/PlayerActions.swift */,
+				5491B328165D7B5C5AE5C48E /* native/mpv-filter/iive_surface.c */,
+				ABE438E9C17355EC8DAF5894 /* native/mpv-filter/iive_surface.h */,
+				050E46C77D2BFE277D05429E /* native/Player/Modern/PlaybackChrome.swift */,
+				F62D9B92CE173D8D3B8C444F /* native/Player/Modern/VideoInformation.swift */,
+				435540901424B1C0FE9C8F4D /* native/Player/Modern/IIVEPlayerApp.swift */,
+				B6BF5CC668F606533FB14A64 /* native/Player/Modern/PlayerModel.swift */,
+				B2FB248D2E264EE3289F3C24 /* native/Player/Modern/PlayerView.swift */,
+				70C587E4B9EF5E4527432C76 /* native/Player/Modern/MPVSession.m */,
+				EF5270000000000000000001 /* native/Player/Modern/LocalVideoPreview.m */,
+				EF5270000000000000000011 /* native/Player/Modern/LocalVideoPreview.h */,
+				0FAABF5779BB0244DDE83E10 /* native/Player/VideoView.m */,
+				AF6872672B7716491A76BD9C /* native/Player/Experimental/IIVEEDRBridge.m */,
+				5DF2A7D0F5A23C750FD2D67E /* native/Player/Experimental/IIVEEDRBridge.h */,
+				0BDB68F19A6422CE14DC8BF7 /* native/FSRCNNXMetal/Sources/FSRCNNXMetal/FSRCNNXModel.swift */,
+				5F3A817C03FC63BDEF494512 /* native/Player/Modern/MPVSession.h */,
+				EF5241000000000000000021 /* native/Player/Modern/VideoCrop.h */,
+				E6FBC60F766C8F705B0C43AB /* native/Player/Modern/Player-Bridging-Header.h */,
+				38812069282450D5129C8A59 /* native/Player/VideoView.h */,
+				77714BB2E50B448C74A642AF /* native/AppleBackend/AppleBackend.m */,
+				DC2B0DC8473F5AA5C36C22FC /* native/AppleBackend/IIVEApple.h */,
+				A188CF8E762A85945B790FD9 /* native/mpv-filter/vf_iive_apple.c */,
+				06EF147DC6D846B896C555F9 /* native/mpv-filter/vf_iive_rife.c */,
+				5125EB623B0CBE798809C250 /* AppIcon.icon */,
+				28AAD1477D5182D66D4B03B3 /* Assets.xcassets */,
+				560737C72BC60145ADB91F3E /* AppIcon.icns */,
+				38A007151ABE87CC01A5B6E9 /* Luma Player.app */,
+				978D739A307F75B400441A6F /* PlayerSystem */,
+			);
+			sourceTree = "<group>";
+		};
+		978D739A307F75B400441A6F /* PlayerSystem */ = {
+			isa = PBXGroup;
+			children = (
+				EF5190000000000000000021 /* NetworkServers.swift */,
+				EF5200000000000000000001 /* native/Player/Modern/RemoteMediaProbe.m */,
+				EF5200000000000000000011 /* RemoteQueue.swift */,
+				EF5220000000000000000001 /* RemoteMetadataCache.swift */,
+				EF5220000000000000000011 /* PlaybackMemory.swift */,
+				EF5220000000000000000021 /* RemotePlaybackMemory.swift */,
+				EF5190000000000000000001 /* NetworkMedia.swift */,
+				EF5230000000000000000001 /* RemoteBrowserState.swift */,
+				EF5230000000000000000011 /* RemoteDirectoryList.swift */,
+				EF5190000000000000000011 /* NetworkMediaSheet.swift */,
+				EF5170000000000000000001 /* RIFEPerformancePolicy.swift */,
+				EF5220000000000000000031 /* PlaybackActivity.swift */,
+				978D739B307F75F100441A6F /* FolderQueue.swift */,
+				978D739C307F75F100441A6F /* PlayerWindowModes.swift */,
+				979FD9183080943C00E9DD3C /* LiveCaptions.swift */,
+				97203CFD3080D7A600F8B35C /* FrameActions.swift */,
+				EF5230000000000000000021 /* FileDialogs.swift */,
+				EF5230000000000000000031 /* LiveTextWindow.swift */,
+				EF5230000000000000000041 /* PlayerWindowLifecycle.swift */,
+				EF5230000000000000000061 /* PlayerKeyboardFocus.swift */,
+				EF5241000000000000000011 /* PlaybackGeometryView.swift */,
+				EF5241000000000000000001 /* PlaybackGeometry.swift */,
+				EF5240000000000000000011 /* PlaybackPreferencesView.swift */,
+				EF5240000000000000000001 /* PlaybackPreferences.swift */,
+				EF5230000000000000000051 /* PlaybackShortcutPolicy.swift */,
+				97203CFF3080D7DE00F8B35C /* ChapterTrack.swift */,
+				97203D013080F60C00F8B35C /* PlayerTimeline.swift */,
+				97203D0330811BB900F8B35C /* FFmpegPreviewDecoder.swift */,
+				97203D0530811CFE00F8B35C /* TimelinePreview.swift */,
+				979BADFA308222A100A25928 /* AudioArtwork.swift */,
+				97E143E030918A8400EC7B14 /* PlayerIdentity.swift */,
+				97E143E230918D6700EC7B14 /* PlayQueueActions.swift */,
+				97E143E430918D6700EC7B14 /* PlayQueueView.swift */,
+				978987E7309AEA520094EED9 /* MediaSystemServices.swift */,
+				97D22F62309CA4D200C6A434 /* BrowserDirectoryWatcher.swift */,
+				976A32FB309E1A1000E39BBD /* SystemHDRPlayback.swift */,
+				3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */,
+				0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */,
+			);
+			path = PlayerSystem;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E8A3AD980EC179856012B7E /* LumaPlayer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5FB66943637FEB59E5652D81 /* Build configuration list for PBXNativeTarget "LumaPlayer" */;
+			buildPhases = (
+				B0B75854C38A3F86DFFDCA0D /* Build native engines */,
+				BCE16DD0260827ECF338C787 /* Sources */,
+				7561BFB015D8F536760CB671 /* Frameworks */,
+				0189424A5A60FED329FA868E /* Resources */,
+				4BFDD8F8700C15E09C7FAA5C /* Bundle shader resources */,
+			);
+			buildRules = (
+			);
+			name = LumaPlayer;
+			packageProductDependencies = (
+				EF5210000000000000000092 /* MSAL */,
+			);
+			productName = "IIVE Player";
+			productReference = 38A007151ABE87CC01A5B6E9 /* Luma Player.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2720;
+			};
+			buildConfigurationList = 862894B703A6DEDF96A9DD6C /* Build configuration list for PBXProject "LumaPlayer" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hant-TW",
+				"zh-Hant",
+				"zh-Hant-HK",
+				"zh-Hans",
+			);
+			mainGroup = 64292B1C2B2E13EAD8788FC8;
+			packageReferences = (
+				EF5210000000000000000091 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */,
+			);
+			preferredProjectObjectVersion = 110;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0E8A3AD980EC179856012B7E /* LumaPlayer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0189424A5A60FED329FA868E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				976F0DBD309239C30059C302 /* InfoPlist.xcstrings in Resources */,
+				976F0DBE309239C30059C302 /* Localizable.xcstrings in Resources */,
+				5DEA813684223A6679FB6B7D /* AppIcon.icon in Resources */,
+				222F0DBFFE5EB23DCD3FD16F /* Assets.xcassets in Resources */,
+				395B64E4D36F56933B582EB8 /* AppIcon.icns in Resources */,
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4BFDD8F8700C15E09C7FAA5C /* Bundle shader resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			name = "Bundle shader resources";
+			shellPath = /bin/bash;
+			shellScript = (
+				"set -euo pipefail",
+				"cd \"$SRCROOT\"",
+				"python3 scripts/player-resources.py \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"",
+			);
+		};
+		B0B75854C38A3F86DFFDCA0D /* Build native engines */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			name = "Build native engines";
+			shellPath = /bin/bash;
+			shellScript = (
+				"set -euo pipefail",
+				"cd \"$SRCROOT\"",
+				"mkdir -p build",
+				"scripts/build-mpv.sh > \"$SRCROOT/build/xcode-backends.log\" 2>&1 || { tail -80 \"$SRCROOT/build/xcode-backends.log\"; exit 1; }",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BCE16DD0260827ECF338C787 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				C4FDAF05A32B9800D190A0A8 /* PlayerSystem/QueueMetadataValue.swift in Sources */,
+				ECAB285731BBA91F7355F3F0 /* PlayerSystem/QueueMetadata.swift in Sources */,
+				CD24BEF207F71A9DA469863B /* PlayerSystem/MediaReadScheduling.swift in Sources */,
+				EF5270000000000000000002 /* native/Player/Modern/LocalVideoPreview.m in Sources */,
+				EF5210000000000000000042 /* PlayerSystem/OneDriveBrowser.swift in Sources */,
+				EF5210000000000000000032 /* PlayerSystem/OneDriveClient.swift in Sources */,
+				EF5210000000000000000022 /* PlayerSystem/OneDriveAccount.swift in Sources */,
+				EF5210000000000000000012 /* PlayerSystem/OneDriveGraph.swift in Sources */,
+				EF5190000000000000000022 /* NetworkServers.swift in Sources */,
+				EF5200000000000000000002 /* native/Player/Modern/RemoteMediaProbe.m in Sources */,
+				EF5200000000000000000012 /* RemoteQueue.swift in Sources */,
+				EF5220000000000000000002 /* RemoteMetadataCache.swift in Sources */,
+				EF5220000000000000000012 /* PlaybackMemory.swift in Sources */,
+				EF5220000000000000000022 /* RemotePlaybackMemory.swift in Sources */,
+				97E143E530918D6700EC7B14 /* PlayQueueView.swift in Sources */,
+				EF5190000000000000000002 /* NetworkMedia.swift in Sources */,
+				EF5230000000000000000002 /* RemoteBrowserState.swift in Sources */,
+				97E143E130918A8400EC7B14 /* PlayerIdentity.swift in Sources */,
+				EF5230000000000000000012 /* RemoteDirectoryList.swift in Sources */,
+				EF5190000000000000000012 /* NetworkMediaSheet.swift in Sources */,
+				EF5170000000000000000002 /* RIFEPerformancePolicy.swift in Sources */,
+				978987E8309AEA520094EED9 /* MediaSystemServices.swift in Sources */,
+				EF5220000000000000000032 /* PlaybackActivity.swift in Sources */,
+				97203D0630811CFE00F8B35C /* TimelinePreview.swift in Sources */,
+				97CE8DED307F76F30056D6FC /* PlayerWindowModes.swift in Sources */,
+				97E143E330918D6700EC7B14 /* PlayQueueActions.swift in Sources */,
+				396CDFDD8C5764556A992F3E /* native/Player/Modern/PlayerSettings.swift in Sources */,
+				97203D0430811BB900F8B35C /* FFmpegPreviewDecoder.swift in Sources */,
+				56B1EFC802D3F819DAE84731 /* native/Player/Modern/PlayerActions.swift in Sources */,
+				04AA5FA35C65BC2BAD888B3F /* native/Player/Modern/PlaybackChrome.swift in Sources */,
+				97CE8DEC307F76DC0056D6FC /* FolderQueue.swift in Sources */,
+				97203D023080F60C00F8B35C /* PlayerTimeline.swift in Sources */,
+				E2767C2353A3138F8473D393 /* native/Player/Modern/VideoInformation.swift in Sources */,
+				979FD9193080943C00E9DD3C /* LiveCaptions.swift in Sources */,
+				976A32FC309E1A1000E39BBD /* SystemHDRPlayback.swift in Sources */,
+				72D6C4D9769816C813961CDA /* OnlineMovieViews.swift in Sources */,
+				E3751CA7010D732FEA7062D6 /* OnlineMovieMetadata.swift in Sources */,
+				B233F4F3C7FD9B5F08B538AB /* native/Player/Modern/IIVEPlayerApp.swift in Sources */,
+				97D22F63309CA4D200C6A434 /* BrowserDirectoryWatcher.swift in Sources */,
+				97203CFE3080D7A600F8B35C /* FrameActions.swift in Sources */,
+				EF5230000000000000000022 /* FileDialogs.swift in Sources */,
+				EF5230000000000000000032 /* LiveTextWindow.swift in Sources */,
+				EF5230000000000000000042 /* PlayerWindowLifecycle.swift in Sources */,
+				EF5230000000000000000062 /* PlayerKeyboardFocus.swift in Sources */,
+				EF5241000000000000000012 /* PlaybackGeometryView.swift in Sources */,
+				EF5241000000000000000002 /* PlaybackGeometry.swift in Sources */,
+				EF5240000000000000000012 /* PlaybackPreferencesView.swift in Sources */,
+				EF5240000000000000000002 /* PlaybackPreferences.swift in Sources */,
+				EF5230000000000000000052 /* PlaybackShortcutPolicy.swift in Sources */,
+				51884C100DF3FADA159B3E90 /* native/Player/Modern/PlayerModel.swift in Sources */,
+				BED47C832246A6EC50FAE9FD /* native/Player/Modern/PlayerView.swift in Sources */,
+				97859CB57866F2D105F6E34E /* native/Player/Modern/MPVSession.m in Sources */,
+				979BADFB308222A100A25928 /* AudioArtwork.swift in Sources */,
+				CA08A6277DD72FEC79E39DC5 /* native/Player/VideoView.m in Sources */,
+				F41C15439C2C95B1AC0713B2 /* native/Player/Experimental/IIVEEDRBridge.m in Sources */,
+				97203D003080D7DE00F8B35C /* ChapterTrack.swift in Sources */,
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5283471FF90C511CFE244FFF /* Release configuration for PBXProject "LumaPlayer" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L3B55KYTVT;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		AB52CB08E0FDF02BF6C67C33 /* Debug configuration for PBXProject "LumaPlayer" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L3B55KYTVT;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+			};
+			name = Debug;
+		};
+		BD604D99E75E45D38BC7AC8F /* Debug configuration for PBXNativeTarget "LumaPlayer" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = native/Player/Modern/IIVEPlayer.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					/opt/homebrew/include,
+					"$(SRCROOT)/native/Player",
+					"$(SRCROOT)/native/Player/Modern",
+					"$(SRCROOT)/.research/mpv-native/include",
+				);
+				INFOPLIST_FILE = native/Player/Modern/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Luma Player";
+				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+					"@executable_path/../../..",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+					"$(SRCROOT)/build/Xcode/SourcePackages/artifacts/microsoft-authentication-library-for-objc/MSAL/MSAL.xcframework/macos-arm64_x86_64",
+					"$(SRCROOT)/build/mpv",
+					"$(SRCROOT)/build/apple",
+					"$(SRCROOT)/native/RIFEBackend/.build/release",
+					"$(SRCROOT)/native/FSRCNNXMetal/.build/release",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					/opt/homebrew/lib,
+					"$(SRCROOT)/build/mpv",
+					"$(SRCROOT)/native/FSRCNNXMetal/.build/release",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 0.4.0;
+				OTHER_LDFLAGS = (
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+					"-lswscale",
+					"-lmpv",
+					"-framework",
+					OpenGL,
+					"-framework",
+					AppKit,
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalPerformanceShaders,
+					"-framework",
+					MetalPerformanceShadersGraph,
+				);
+				OTHER_SWIFT_FLAGS = "-Xcc -Wno-deprecated-declarations";
+				PRODUCT_BUNDLE_IDENTIFIER = com.august.lumaplayer;
+				PRODUCT_NAME = "Luma Player";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/native/Player/Modern/Player-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				WARNING_CFLAGS = "-Wno-deprecated-declarations";
+			};
+			name = Debug;
+		};
+		D41F56CEA1AC933D25C57AEB /* Release configuration for PBXNativeTarget "LumaPlayer" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = native/Player/Modern/IIVEPlayer.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					/opt/homebrew/include,
+					"$(SRCROOT)/native/Player",
+					"$(SRCROOT)/native/Player/Modern",
+					"$(SRCROOT)/.research/mpv-native/include",
+				);
+				INFOPLIST_FILE = native/Player/Modern/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Luma Player";
+				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+					"@executable_path/../../..",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+					"$(SRCROOT)/build/Xcode/SourcePackages/artifacts/microsoft-authentication-library-for-objc/MSAL/MSAL.xcframework/macos-arm64_x86_64",
+					"$(SRCROOT)/build/mpv",
+					"$(SRCROOT)/build/apple",
+					"$(SRCROOT)/native/RIFEBackend/.build/release",
+					"$(SRCROOT)/native/FSRCNNXMetal/.build/release",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					/opt/homebrew/lib,
+					"$(SRCROOT)/build/mpv",
+					"$(SRCROOT)/native/FSRCNNXMetal/.build/release",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 0.4.0;
+				OTHER_LDFLAGS = (
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+					"-lswscale",
+					"-lmpv",
+					"-framework",
+					OpenGL,
+					"-framework",
+					AppKit,
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalPerformanceShaders,
+					"-framework",
+					MetalPerformanceShadersGraph,
+				);
+				OTHER_SWIFT_FLAGS = "-Xcc -Wno-deprecated-declarations";
+				PRODUCT_BUNDLE_IDENTIFIER = com.august.lumaplayer;
+				PRODUCT_NAME = "Luma Player";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/native/Player/Modern/Player-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				WARNING_CFLAGS = "-Wno-deprecated-declarations";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5FB66943637FEB59E5652D81 /* Build configuration list for PBXNativeTarget "LumaPlayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BD604D99E75E45D38BC7AC8F /* Debug configuration for PBXNativeTarget "LumaPlayer" */,
+				D41F56CEA1AC933D25C57AEB /* Release configuration for PBXNativeTarget "LumaPlayer" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+		862894B703A6DEDF96A9DD6C /* Build configuration list for PBXProject "LumaPlayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB52CB08E0FDF02BF6C67C33 /* Debug configuration for PBXProject "LumaPlayer" */,
+				5283471FF90C511CFE244FFF /* Release configuration for PBXProject "LumaPlayer" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		EF5210000000000000000091 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/AzureAD/microsoft-authentication-library-for-objc";
+			requirement = {
+				kind = exactVersion;
+				version = 2.16.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		EF5210000000000000000092 /* MSAL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EF5210000000000000000091 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */;
+			productName = MSAL;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}

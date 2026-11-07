@@ -11,3 +11,12 @@ AppIcon.iconset/
 benchmarks/fixtures/
 *.dmg
 .DS_Store
+
+# Local workspace state and generated diagnostics
+**/xcuserdata/
+benchmarks/results/
+/main
+*.p12
+*.mobileprovision
+.env
+.env.*

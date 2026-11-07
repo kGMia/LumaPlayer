@@ -26,55 +26,77 @@ struct CompileMetalShaders: BuildToolPlugin {
         }
         let metallibPath = outputDir.appending("default.metallib")
 
-        // Locate metal and metallib via xcrun
-        let metalPath = try xcrunFind("metal")
-        let metallibToolPath = try xcrunFind("metallib")
+        // Locate metal and metallib via xcrun (with fallback to prebuilt default.metallib if MetalToolchain is not active)
+        if let metalPath = xcrunFind("metal"), let metallibToolPath = xcrunFind("metallib") {
+            var commands: [Command] = []
 
-        var commands: [Command] = []
+            for (metal, air) in zip(metalFiles, airFiles) {
+                commands.append(.buildCommand(
+                    displayName: "Compile \(metal.lastComponent)",
+                    executable: Path(metalPath),
+                    arguments: [
+                        "-c",
+                        "-fmodules-cache-path=\(moduleCacheDir.string)",
+                        metal.string,
+                        "-o", air.string,
+                    ],
+                    inputFiles: [metal],
+                    outputFiles: [air]
+                ))
+            }
 
-        // Compile each .metal -> .air
-        for (metal, air) in zip(metalFiles, airFiles) {
             commands.append(.buildCommand(
-                displayName: "Compile \(metal.lastComponent)",
-                executable: Path(metalPath),
-                arguments: [
-                    "-c",
-                    "-fmodules-cache-path=\(moduleCacheDir.string)",
-                    metal.string,
-                    "-o", air.string,
-                ],
-                inputFiles: [metal],
-                outputFiles: [air]
+                displayName: "Link default.metallib",
+                executable: Path(metallibToolPath),
+                arguments: airFiles.map { $0.string } + ["-o", metallibPath.string],
+                inputFiles: airFiles,
+                outputFiles: [metallibPath]
             ))
+
+            return commands
         }
 
-        // Link .air files -> default.metallib
-        commands.append(.buildCommand(
-            displayName: "Link default.metallib",
-            executable: Path(metallibToolPath),
-            arguments: airFiles.map { $0.string } + ["-o", metallibPath.string],
-            inputFiles: airFiles,
-            outputFiles: [metallibPath]
-        ))
-
-        return commands
+        let prebuilt = shadersDir.appending("default.metallib.prebuilt")
+        guard FileManager.default.fileExists(atPath: prebuilt.string) else {
+            throw PluginError.toolNotFound("metallib")
+        }
+        return [
+            .buildCommand(
+                displayName: "Copy prebuilt default.metallib",
+                executable: Path("/bin/cp"),
+                arguments: ["-f", prebuilt.string, metallibPath.string],
+                inputFiles: [prebuilt],
+                outputFiles: [metallibPath]
+            )
+        ]
     }
 
-    private func xcrunFind(_ tool: String) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["--find", tool]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let path = String(data: data, encoding: .utf8)!
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty else {
-            throw PluginError.toolNotFound(tool)
+    private func xcrunFind(_ tool: String) -> String? {
+        let argumentVariants: [[String]] = [
+            ["--find", tool],
+            ["--sdk", "macosx", "--find", tool],
+            ["--toolchain", "com.apple.dt.toolchain.MetalToolchain", "--find", tool]
+        ]
+        for args in argumentVariants {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            process.arguments = args
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+            if (try? process.run()) != nil {
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let path = String(data: data, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if !path.isEmpty && FileManager.default.isExecutableFile(atPath: path) {
+                        return path
+                    }
+                }
+            }
         }
-        return path
+        return nil
     }
 
     enum PluginError: Error {

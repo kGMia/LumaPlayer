@@ -2,3 +2,6 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #import "MPVSession.h"
 #pragma clang diagnostic pop
+
+#import "RemoteMediaProbe.h"
+#import "LocalVideoPreview.h"

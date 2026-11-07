@@ -16,8 +16,32 @@ struct FSRWeights: Decodable {
     let format: Int, tier: Int
     let layout: String, subpixelOrder: String, sha256: String
     let layers: [FSRLayer]
+    private static func locateJSON(_ name: String) -> URL? {
+        let fm = FileManager.default
+        if let u = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Models"), fm.fileExists(atPath: u.path) { return u }
+        if let u = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Resources"), fm.fileExists(atPath: u.path) { return u }
+        if let resURL = Bundle.main.resourceURL {
+            for rel in [
+                "FSRCNNXMetal_FSRCNNXMetal.bundle/Contents/Resources/Resources/\(name).json",
+                "FSRCNNXMetal_FSRCNNXMetal.bundle/Resources/\(name).json",
+                "Models/\(name).json",
+                "Resources/\(name).json"
+            ] {
+                let candidate = resURL.appendingPathComponent(rel)
+                if fm.fileExists(atPath: candidate.path) { return candidate }
+            }
+        }
+        let sourceRelative = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources/\(name).json")
+        if fm.fileExists(atPath: sourceRelative.path) { return sourceRelative }
+        return nil
+    }
     static func load(_ tier: FSRCNNXTier) throws -> FSRWeights {
-        guard let url = Bundle.module.url(forResource: "fsrcnnx\(tier.rawValue)", withExtension: "json", subdirectory: "Resources") else {throw FSRError.unavailable("Model resource missing")}
+        let name = "fsrcnnx\(tier.rawValue)"
+        guard let url = locateJSON(name) ?? Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Resources") else {
+            throw FSRError.unavailable("Model resource missing")
+        }
         let w = try JSONDecoder().decode(FSRWeights.self, from: Data(contentsOf: url))
         guard w.format == 1, w.tier == tier.rawValue, w.layout == "HWIO", w.subpixelOrder == "x*2+y", w.layers.count == 7 else {throw FSRError.unavailable("Model format mismatch")}
         return w
@@ -31,6 +55,26 @@ private struct BufferSlot {
     let outputData: MPSGraphTensorData
 }
 
+/// Shader pipelines are independent of resolution/tier. Keep one device's pair,
+/// never frame surfaces or graph workspaces. Every cache access is locked.
+private enum FSRKernelCache {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cached: (UInt64, MTLComputePipelineState, MTLComputePipelineState)?
+    static func pipelines(device: MTLDevice, source: String, fallback: URL?) throws -> (MTLComputePipelineState, MTLComputePipelineState) {
+        lock.lock(); defer { lock.unlock() }
+        if let cached, cached.0 == device.registryID { return (cached.1, cached.2) }
+        let library: MTLLibrary
+        if let compiled = try? device.makeLibrary(source: source, options: nil) { library = compiled }
+        else if let fallback, let bundled = try? device.makeLibrary(URL: fallback) { library = bundled }
+        else { library = try device.makeDefaultLibrary(bundle: Bundle.module) }
+        guard let read = library.makeFunction(name: "fsrReadLuma"),
+              let write = library.makeFunction(name: "fsrWriteNV12") else { throw FSRError.unavailable("Metal kernels missing") }
+        let pair = try (device.makeComputePipelineState(function: read), device.makeComputePipelineState(function: write))
+        cached = (device.registryID, pair.0, pair.1)
+        return pair
+    }
+}
+
 /// Synchronous per-worker GPU workspace with pre-bound tensor descriptors.
 /// One slot is sufficient because process waits for GPU completion before returning.
 public final class FSRCNNXModel {
@@ -41,6 +85,9 @@ public final class FSRCNNXModel {
     private let slot: BufferSlot
     private let inflightSemaphore = DispatchSemaphore(value: 1)
     private var frameCount: UInt64 = 0
+    // Serial caller. GPU span includes scheduling gaps between graph submissions;
+    // it is not shader-only time and overlaps the CPU wait below.
+    public private(set) var lastTiming: (gpuSpanMS: Double, cpuWaitMS: Double)?
     private let readLuma: MTLComputePipelineState, writeNV12: MTLComputePipelineState
     private let cache: CVMetalTextureCache
     private let inputs: CVPixelBufferPool, outputs: CVPixelBufferPool
@@ -80,12 +127,14 @@ public final class FSRCNNXModel {
             constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
             uint w=y.get_width()/2;
             uint i=((gid.y/2)*w+gid.x/2)*4+(gid.x%2)*2+gid.y%2;
-            half lumaOut = subpixel[i];
+            float2 lumaPos = (float2(gid)+0.5f)/float2(y.get_width(),y.get_height());
+            float srY = clamp(float(subpixel[i]), 0.0f, 1.0f);
             float splitRatio = chromaParams.z;
-            if(splitRatio > 0.0f && (float(gid.x)+0.5f)/float(y.get_width()) < splitRatio) {
-                float2 lumaPos = (float2(gid)+0.5f)/float2(y.get_width(),y.get_height());
-                float origY = clamp(float(sourceY.sample(s,lumaPos).r) * chromaParams.y, 0.0f, 1.0f);
-                lumaOut = half(origY);
+            // Comparison must preserve the normal model output on the SR side.
+            // The source side uses bilinear scaling to the same output dimensions.
+            half lumaOut = half(srY);
+            if(splitRatio > 0.0f && lumaPos.x < splitRatio) {
+                lumaOut = half(clamp(float(sourceY.sample(s,lumaPos).r) * chromaParams.y, 0.0f, 1.0f));
             }
             y.write(half4(lumaOut,0,0,1),gid);
             if((gid.x%2)==0 && (gid.y%2)==0) {
@@ -96,19 +145,15 @@ public final class FSRCNNXModel {
             }
         }
         """
-        let library: MTLLibrary
-        if let srcLib = try? device.makeLibrary(source: shaderSource, options: nil) {
-            library = srcLib
-        } else {
-            library = try device.makeDefaultLibrary(bundle: Bundle.module)
-        }
-        guard let read=library.makeFunction(name:"fsrReadLuma"),let write=library.makeFunction(name:"fsrWriteNV12") else {throw FSRError.unavailable("Metal kernels missing")}
-        readLuma=try device.makeComputePipelineState(function:read)
-        writeNV12=try device.makeComputePipelineState(function:write)
+        (readLuma, writeNV12) = try FSRKernelCache.pipelines(device: device, source: shaderSource, fallback: Self.locateMetallib())
         var textureCache:CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(nil,nil,device,nil,&textureCache)==kCVReturnSuccess,let textureCache else {throw FSRError.unavailable("Texture cache")}
         cache=textureCache
-        inputs=try Self.pool(width,height);outputs=try Self.pool(width*2,height*2)
+        inputs=try Self.pool(width,height)
+        // Retain a small warm output pool across seek/trim. This is an estimate,
+        // not a resident-memory cap; large outputs keep the old zero minimum.
+        let keepOutputs = UInt64(width*2) * UInt64(height*2) * 3 <= 32 * 1024 * 1024 ? 2 : 0
+        outputs=try Self.pool(width*2,height*2,minimum:keepOutputs)
         let graph=MPSGraph(), shape:[NSNumber]=inShape
         let tensor=graph.placeholder(shape:shape,dataType:.float16,name:"luma")
         var tensors=["input":tensor]
@@ -144,12 +189,38 @@ public final class FSRCNNXModel {
         executable=graph.compile(with:MPSGraphDevice(mtlDevice:device),
             feeds:[tensor:MPSGraphShapedType(shape:shape,dataType:.float16)],targetTensors:[result],targetOperations:nil,compilationDescriptor:compilation)
     }
-    private static func pool(_ w:Int,_ h:Int)throws->CVPixelBufferPool {
+    private static func locateMetallib() -> URL? {
+        let fm = FileManager.default
+        if let resURL = Bundle.main.resourceURL {
+            for rel in [
+                "FSRCNNXMetal_FSRCNNXMetal.bundle/Contents/Resources/default.metallib",
+                "FSRCNNXMetal_FSRCNNXMetal.bundle/default.metallib",
+                "default.metallib"
+            ] {
+                let candidate = resURL.appendingPathComponent(rel)
+                if fm.fileExists(atPath: candidate.path) { return candidate }
+            }
+        }
+        let pkgRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        for rel in [
+            ".build/release/FSRCNNXMetal_FSRCNNXMetal.bundle/Contents/Resources/default.metallib",
+            ".build/arm64-apple-macosx/release/FSRCNNXMetal_FSRCNNXMetal.bundle/default.metallib"
+        ] {
+            let candidate = pkgRoot.appendingPathComponent(rel)
+            if fm.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+    private static func pool(_ w:Int,_ h:Int,minimum:Int=0)throws->CVPixelBufferPool {
         var pool:CVPixelBufferPool?
         let attrs:[CFString:Any]=[kCVPixelBufferWidthKey:w,kCVPixelBufferHeightKey:h,
             kCVPixelBufferPixelFormatTypeKey:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             kCVPixelBufferIOSurfacePropertiesKey:[:],kCVPixelBufferMetalCompatibilityKey:true]
-        guard CVPixelBufferPoolCreate(nil,nil,attrs as CFDictionary,&pool)==kCVReturnSuccess,let pool else {throw FSRError.unavailable("Pixel pool")}
+        let policy=[kCVPixelBufferPoolMinimumBufferCountKey:minimum] as CFDictionary
+        guard CVPixelBufferPoolCreate(nil,policy,attrs as CFDictionary,&pool)==kCVReturnSuccess,let pool else {throw FSRError.unavailable("Pixel pool")}
         return pool
     }
     private func allocate(_ pool:CVPixelBufferPool)throws->CVPixelBuffer {
@@ -157,6 +228,14 @@ public final class FSRCNNXModel {
         let limits=[kCVPixelBufferPoolAllocationThresholdKey:12] as CFDictionary
         guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil,pool,limits,&out)==kCVReturnSuccess,let out else {throw FSRError.unavailable("Pixel pool capacity")}
         return out
+    }
+    /// Worker boundary only; outstanding output frames retain their own surfaces.
+    public func releaseUnusedResources() {
+        inflightSemaphore.wait()
+        defer { inflightSemaphore.signal() }
+        CVMetalTextureCacheFlush(cache, 0)
+        CVPixelBufferPoolFlush(inputs, .excessBuffers)
+        CVPixelBufferPoolFlush(outputs, .excessBuffers)
     }
     public func makeInput()throws->CVPixelBuffer {try allocate(inputs)}
     private func plane(_ pixels:CVPixelBuffer,_ index:Int,tenBit:Bool=false,writable:Bool=false)throws->(CVMetalTexture,MTLTexture) {
@@ -174,6 +253,7 @@ public final class FSRCNNXModel {
         encoder.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:x,height:y,depth:1))
     }
     public func process(_ pixels:CVPixelBuffer, chromaLeft:Bool=false, splitRatio:Float=0.0)throws->CVPixelBuffer {
+        lastTiming = nil
         let fmt=CVPixelBufferGetPixelFormatType(pixels)
         let isTenBit=(fmt==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange)
         guard CVPixelBufferGetWidth(pixels)==width,CVPixelBufferGetHeight(pixels)==height,
@@ -205,9 +285,20 @@ public final class FSRCNNXModel {
         var chromaParams=SIMD4<Float>(chromaLeft ? 0.25 : 0.0, inputScale, clampedSplit, 0.0)
         write.setBytes(&chromaParams,length:MemoryLayout<SIMD4<Float>>.size,index:1)
         dispatch(write,writeNV12,width*2,height*2);write.endEncoding()
-        let final=command.commandBuffer
-        command.commit();command.waitUntilCompleted()
-        if let error=final.error {throw error}
+        // MPSGraph may commitAndContinue internally. The original buffer marks
+        // the start; the current root marks completion of ALL graph work.
+        let final=command.rootCommandBuffer
+        command.commit()
+        let waitStart=ProcessInfo.processInfo.systemUptime
+        command.waitUntilCompleted()
+        let waitMS=(ProcessInfo.processInfo.systemUptime-waitStart)*1000
+        if let error=final.error ?? cb.error {throw error}
+        let start=cb.gpuStartTime,end=final.gpuEndTime
+        if start.isFinite,end.isFinite,start>0,end>=start {
+            lastTiming=((end-start)*1000,waitMS)
+        }
+        // Recycled surfaces must not inherit optional attachments from an old frame.
+        CVBufferRemoveAllAttachments(output)
         CVBufferPropagateAttachments(pixels,output)
         CVBufferSetAttachment(output,kCVImageBufferChromaLocationTopFieldKey,kCVImageBufferChromaLocation_Center,.shouldPropagate)
         CVBufferSetAttachment(output,kCVImageBufferChromaLocationBottomFieldKey,kCVImageBufferChromaLocation_Center,.shouldPropagate)

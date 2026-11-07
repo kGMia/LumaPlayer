@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.4
 import PackageDescription
 let package = Package(name: "RIFEBackend", platforms: [.macOS(.v13)], products: [
  .executable(name: "iive-rife", targets: ["EnhancerCLI"]),

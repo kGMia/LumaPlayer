@@ -1,7 +1,7 @@
-# IIVE Player 0.4
+# Luma Player
 
 The current Xcode/SwiftUI player is documented in [docs/player-0.4.md](../../docs/player-0.4.md).
-Open the root `IIVEPlayer.xcodeproj`; run the **IIVE Player** scheme on My Mac (macOS 27, arm64).
+Open the root `LumaPlayer.xcodeproj`; run the **Luma Player** scheme on My Mac (macOS 27, arm64).
 Sources under `Modern/` are the active app; `VideoView.m` is the shared libmpv rendering adapter.
 
 The notes below describe the preserved 0.3 comparison host, **not** the current Xcode UI.
@@ -16,7 +16,7 @@ IINA.app. The existing plugin remains 0.2.0 with RIFE unavailable in stock IINA.
 
 ## Run
 
-On the current development machine, open `build/IIVE-Player.app`, then **Open…**,
+On the current development machine, open `build/Luma Player.app`, then **Open…**,
 or from the project root:
 
 ```sh

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bundle shader models, license notices and app icon resources."""
 from pathlib import Path
-import sys, shutil
+import sys, shutil, os, subprocess
 
 root = Path(__file__).resolve().parents[1]
 app_resources = Path(sys.argv[1])
@@ -23,7 +23,7 @@ for name in ('fsrcnnx8_fp16.bin', 'fsrcnnx16_fp16.bin', 'weights_manifest.json')
     (app_resources / 'Models' / name).unlink(missing_ok=True)
 
 # 3. Licenses
-for name in ('LICENSE', 'THIRD-PARTY.md', 'LittleCMS-LICENSE'):
+for name in ('LICENSE', 'THIRD-PARTY.md', 'LittleCMS-LICENSE', 'MSAL-LICENSE'):
     license_path = root / name
     if license_path.exists():
         shutil.copy2(license_path, app_resources / name)
@@ -39,6 +39,34 @@ if app_icon_bundle.exists():
     if dst_bundle.exists():
         shutil.rmtree(dst_bundle)
     shutil.copytree(app_icon_bundle, dst_bundle)
+
+# 4b. Ensure MSAL.framework and SwiftPM resource bundles are embedded for direct Xcode (⌘R) runs
+app_contents = app_resources.parent
+frameworks_dir = app_contents / 'Frameworks'
+frameworks_dir.mkdir(parents=True, exist_ok=True)
+build_products_dir = app_contents.parent.parent
+msal_candidates = [
+    build_products_dir / 'MSAL.framework',
+    build_products_dir / 'PackageFrameworks/MSAL.framework',
+    root / 'build/Xcode/SourcePackages/artifacts/microsoft-authentication-library-for-objc/MSAL/MSAL.xcframework/macos-arm64_x86_64/MSAL.framework',
+]
+dst_msal = frameworks_dir / 'MSAL.framework'
+for candidate in msal_candidates:
+    if candidate.exists():
+        if not dst_msal.exists():
+            shutil.copytree(candidate, dst_msal, symlinks=True)
+        identity = os.environ.get('EXPANDED_CODE_SIGN_IDENTITY') or '-'
+        subprocess.run(['codesign', '--force', '--sign', identity, '--timestamp=none', str(dst_msal)], check=False)
+        break
+
+for bundle_rel in (
+    'native/RIFEBackend/.build/release/RifeMetal_RifeMetal.bundle',
+    'native/RIFEBackend/.build/release/RifeMetal_RifeMetalCore.bundle',
+    'native/FSRCNNXMetal/.build/release/FSRCNNXMetal_FSRCNNXMetal.bundle',
+):
+    src_bundle = root / bundle_rel
+    if src_bundle.is_dir():
+        shutil.copytree(src_bundle, app_resources / src_bundle.name, dirs_exist_ok=True)
 
 # 5. Patch generated Info.plist if present
 info_plist = app_resources.parent / 'Info.plist'

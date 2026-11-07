@@ -69,6 +69,62 @@ final class WeightStoreTests: XCTestCase {
         XCTAssertThrowsError(try WeightStore(url: url))
     }
 
+    func testTruncatedPayloadRejectedBeforeTensorAccess() throws {
+        let url = tempDir.appendingPathComponent("truncated.rmw")
+        try RMWTestFixture.write(tensors:[.init(name:"x",shape:[2],values:[1,2])],to:url)
+        var bytes = try Data(contentsOf:url)
+        bytes.removeLast()
+        try bytes.write(to:url)
+        XCTAssertThrowsError(try WeightStore(url:url)) {
+            XCTAssertEqual($0 as? WeightStoreError,.fileTooSmall)
+        }
+    }
+
+    func testDuplicateNamesCannotShadowAnotherTensor() throws {
+        let url = tempDir.appendingPathComponent("duplicate.rmw")
+        try RMWTestFixture.write(tensors:[.init(name:"x",shape:[1],values:[1]),
+                                         .init(name:"x",shape:[1],values:[2])],to:url)
+        XCTAssertThrowsError(try WeightStore(url:url)) {
+            guard case WeightStoreError.headerParseFailed = $0 else {
+                return XCTFail("Expected duplicate-name validation, got \($0)")
+            }
+        }
+    }
+
+    func testInvalidRangesRejectWithoutIntegerOverflow() throws {
+        for (offset,size) in [(-1,2),(0,-1),(Int.max,2),(2,Int.max),(8,1)] {
+            let header:[String:Any] = ["model":"test-model","ifblock_channels":[4,2],
+                "scale_list":[2,1],"input_layout":"NHWC","tensors":[
+                    ["name":"x","dtype":"f16","shape":[1],"offset":offset,"size":size]]]
+            let json = try JSONSerialization.data(withJSONObject:header,options:.sortedKeys)
+            var file = Data([0x52,0x4d,0x57,0x31])
+            for value in [UInt32(1),UInt32(json.count)] {
+                var little = value.littleEndian
+                withUnsafeBytes(of:&little) { file.append(contentsOf:$0) }
+            }
+            file.append(json)
+            file.append(Data(repeating:0,count:(16-file.count%16)%16))
+            file.append(Data(repeating:0,count:8))
+            let url = tempDir.appendingPathComponent("invalid-range.rmw")
+            try file.write(to:url)
+            XCTAssertThrowsError(try WeightStore(url:url)) {
+                XCTAssertEqual($0 as? WeightStoreError,.fileTooSmall)
+            }
+        }
+    }
+
+    func testIndexedReadsKeepTensorBytesAndMissingNameBehavior() throws {
+        let url = tempDir.appendingPathComponent("indexed.rmw")
+        try RMWTestFixture.write(tensors:[.init(name:"first",shape:[1],values:[1]),
+                                         .init(name:"second",shape:[1],values:[2])],to:url)
+        let store = try WeightStore(url:url)
+        XCTAssertEqual(try store.tensorBytes(named:"second"),Data([0,0x40]))
+        XCTAssertEqual(try store.tensorBytes(named:"first"),Data([0,0x3c]))
+        XCTAssertThrowsError(try store.tensorBytes(named:"missing")) {
+            XCTAssertEqual($0 as? WeightStoreError,.tensorNotFound("missing"))
+        }
+    }
+
     func testLoadFromPythonOutput() throws {
         let url = URL(fileURLWithPath: "/tmp/test.rmw")
         guard FileManager.default.fileExists(atPath: url.path) else {

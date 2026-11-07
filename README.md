@@ -1,15 +1,90 @@
-# IINA Video Enhancer
+# Luma Player
+
+独立的 macOS 原生视频增强播放器，应用名称 **Luma Player**，Bundle ID 为 `com.august.lumaplayer`。打开 `LumaPlayer.xcodeproj`，选择 **Luma Player** scheme；使用 `bash scripts/build-player-modern.sh Debug` 构建打包，交付路径为 `build/Luma Player.app`。
+
+开发入口：`python3 scripts/dev.py build player` 构建签名包；`python3 scripts/dev.py check transport frame-step` 运行指定的轻量检查；`python3 scripts/dev.py package --source-app "…/Luma Player.app"` 打包已有签名产物。`--dry-run` 放在子命令前可只查看执行命令；原有脚本继续可用。
+
+
+改名后的首次启动会导入旧播放器的偏好设置和播放记录，不覆盖已存在的新设置。OneDrive 需重新登录，并在 Microsoft 应用注册中使用 `msauth.com.august.lumaplayer://auth`；WebDAV 服务器列表保留，旧钥匙串授权不兼容时需重新保存凭据。历史插件、底层 ABI 名称和第三方署名仍保留，相关内容不表示播放器与 IINA 存在隶属关系。
+
+以下为历史开发记录（旧应用名称/交付路径仅对应当时版本）。
+
+2026-10-26：改用 mpv 官方唤醒回调及时处理加载钩子与切换事件，减少等待 250 ms 遥测轮询的机会；普通遥测仍为 4 Hz。性能记录新增最近 8 次切换的加载、播放重启、初次增强配置/预热暂停和新帧提交观察值。基础检查与无窗口加载检查通过；显示器实际呈现耗时不作推测。见 [切换记录说明](docs/media-switch-20261025.md)。
+
+2026-10-25：优化媒体切换：卸载间隙不再提交临时空增强方案；FSRCNNX 共享同设备的 Metal 着色器管线，并保留小规模输出池供 Seek 后复用。主窗口/迷你播放器加入原生加载过渡，切换期间不返回启动引导；短加载延迟显示指示，支持减少动态效果。状态检查、两个小尺寸模型/缓冲生命周期检查及应用构建签名通过，实际切换体验待用户验证。新版为 `build/IIVE-Player.app`。
+
+2026-10-25：原生增强滤镜新增按媒体时间控制的自动预取窗口，适配 VFR/倍速并在 Seek 后重置。基础构建、短滤镜链检查及应用打包通过；实际交互由用户验证。见 [简要说明](docs/queue-lookahead-20261025.md)。
+
+2026-10-25：新增独立 FSRCNNX Core ML / NV12 原型，128 与 720p 基础输出对比通过。计算计划可分配到 Neural Engine，但单独运行暂未优于 MPSGraph；保持播放器默认管线。见 [结果与运行方法](docs/fsrcnnx-coreml-20261025.md)。
+
+组合跟进：新增 RIFE fast + FSRCNNX 的有界流水线对比工具。720p 四帧对短测中 Core ML 组合仍较慢，暂不接入播放器；后续优先优化现有 Metal 管线的展示期限与排队延迟。
+
+2026-10-25：新增独立 SPAN x2 Core ML 原型与 FSRCNNX 对比工具。FP16 计算计划可分配至 Neural Engine，但压力输入存在数值偏差，暂不接入播放器。见 [简要结果与运行方法](docs/span-prototype-20261025.md)。
+
+SPAN 跟进：已固定受支持的转换环境，加入逐层诊断、混合精度和多类输入检查。工具链更换及注意力 FP32 均未解决压力输入偏差，模型继续保持诊断用途；默认导出会拒绝发布失败的模型。
+
+2026-10-24：修正 RIFE 阶段 mask 更新语义；加入官方 4.25 Lite 的原生实验入口、校验与真实短片对比工具。短片检查尚未显示 Lite 的稳定耗时优势，播放器仍使用 4.26。见 [简要说明及结果](docs/rife-lite-20261024.md)。
+
+2026-10-24：RIFE/FSRCNNX 新增 GPU 区间与 CPU 等待计时；去隔行接入 VideoToolbox/Metal 路径并修正 On/Auto 切换。仅基础验证，见 [简要记录](docs/metal-pipeline-20261024.md)。
 
 ## 新：独立原生播放器 0.4（macOS 27）
 
-本轮开发重点已转为 **IIVE Player**：SwiftUI 原生窗口，同时集成 FSRCNNX 8/16、RIFE Metal 和 Apple VideoToolbox 低延迟超分/2× 插帧。打开根目录 `IIVEPlayer.xcodeproj`，选择 **IIVE Player → My Mac**，在 Xcode 27 中 Run。
+2026-10-23 Swift 6 迁移：主播放器 Debug / Release 配置采用 `SWIFT_VERSION = 6.0`，实际使用 Xcode 自带的 Swift 6.4 编译器；自有 RIFEBackend / FSRCNNXMetal 包采用 Swift 6 语言模式，第三方包保留各自设置。预览生成器的请求与取消串行化，原生远程探测读取加锁，窗口动画完成回调显式回到 MainActor。基础构建与定向检查记录见 `benchmarks/results/swift6-*20261023.log`；未进行 GUI 或完整性能回归。可运行 `bash scripts/check-asset-image.sh` 检查真实 AVFoundation 预览读取。
+
+2026-10-23 远程目录多选：使用 ⌘/Shift 点击选择，工具栏或右键菜单的 Add to Queue 按当前可见排序追加所选媒体；跳过文件夹、不支持格式及同源已排队项目，不扩展到整个目录、不预取下载链接。现有播放项目保持不变；空闲播放器沿用原有追加后播放行为。“接下来播放”尚未实现。基础检查：`bash scripts/check-remote-batch.sh`（纯逻辑与无界面 libmpv 队列检查）。
+
+2026-10-23 远程目录控件：WebDAV / OneDrive 共用原生 SwiftUI 列表，支持当前目录多关键词搜索、文件名/大小排序（文件夹置顶）。单击选中，双击或 Return 打开；方向键选择，⌘↑ 返回上级，⌘↓ 打开，⌘F 搜索，⌘R 刷新。OneDrive 搜索与排序仅覆盖已加载分页，界面明确显示范围；搜索不会缩减播放时的同目录队列。基础逻辑与编译检查通过，键盘及实际 UI 效果由用户验证。
+
+2026-10-23 远程浏览：WebDAV 已保存连接与 OneDrive 会在本次应用会话恢复上次目录；目录缓存按凭据/账号隔离，每种服务最多 12 个目录、10,000 条记录，45 秒内复用。刷新保留现有列表，OneDrive 刷新当前目录及已加载分页；返回目录尝试定位到上次选中项。Settings → Network 可清空浏览缓存，退出应用自动清除；实际滚动与选中体验待用户验证。
+
+2026-10-23 网络错误提示统一区分 DNS、连接、鉴权、TLS、限流与读取中断，不展示带令牌的地址。目录/API 请求采用 20 秒空闲、30 秒单请求总超时；媒体预检重定向链共用 25 秒预算。OneDrive 仅自动等待不超过 5 秒的 Retry-After（支持 HTTP 日期），更长等待交由用户重试。基础策略检查通过，实际网盘与界面由用户验证。
+
+2026-10-21 独立打包：`build/IIVE-Player.app` 已内置 arm64 动态库、RIFE/FSRCNNX 模型资源及 FFmpeg 预览工具；旧 PersonalTeam 路径指向同一交付包。搬移副本后的无界面加载/解码检查通过，模型推理及实际界面仍由用户验证。应用使用现有个人开发签名，尚未公证或作为公开发行版发布。
+
+2026-10-21 交付与网络恢复更新：统一构建入口与 `build/IIVE-Player.app` 交付路径，新增有界重连和进度恢复、播放优先的元数据调度，以及缓冲/重连后的性能保护宽限期。仅做基础验证，限制与检查记录见 [本轮说明](docs/delivery-network-recovery-20261021.md)。
+
+2026-10-21 新增 **OneDrive · Preview**：Settings → Network 配置 Microsoft Client ID 后登录、浏览与播放，复用现有远程队列和增强管线。账号实测待用户注册后完成，见 [注册与使用说明](docs/onedrive-20261021.md)。
+
+2026-10-20 WebDAV 队列补齐原始文件名、大小、按需时长/缩略图与同目录自动加入；播放时刷新临时下载链接。用法、基本验证及 OneDrive 评估见 [远程队列说明](docs/webdav-queue-onedrive-20261020.md)。
+
+2026-10-19 新增网络播放：**File → Open Network…（⌘N）** 支持媒体直链与 WebDAV 文件夹浏览、Basic 登录和混合播放队列。短片实测 HTTP 认证输入可同时运行 RIFE + FSRCNNX；公网实时性能、HLS/RTSP 与实际 UI 仍待验证。登录型播放支持安全的网盘媒体重定向，暂不支持认证播放列表。新增 **Settings → Network** 与钥匙串服务器保存，详见 [WebDAV 播放修复与服务器保存](docs/webdav-servers-20261019.md)。使用和限制见 [网络串流说明](docs/network-streaming-20261019.md)。
+
+2026-10-17 性能基线：新增解码 API、增强任务、排队、渲染/交换耗时记录及预取 1/2/4 对比工具。M5 同短片九次无窗口对比通过；没有足够证据修改默认自动策略。使用、原始结果与测量边界见 [分阶段性能基线](docs/performance-baseline-20261017.md)。
+
+**当前状态（2026-10-17）：原生 EDR 输出暂时搁置。** 用户实测旧帧停滞/卡死后，已移除播放器中的 EDR 挂载路径并清理旧开启偏好；HDR 文件继续通过现有 SDR 色调映射播放。请使用本轮 `build/PersonalTeam/IIVE Player.app`，先完全退出旧进程。详见 [EDR 停滞处理](docs/edr-suspended-20261017.md)。下方 EDR 开关与挂载记录为历史开发进展。
+
+2026-10-17 跟进验收：补齐 EDR 色彩切换的渲染门控与确认顺序，保留实验开关；修复封面共享任务取消、解码中变更和相邻封面失效，预取增加最低样本要求。基础构建与定向检查通过，HDR 实际画面仍待用户确认。见 [三项跟进验收](docs/followup-acceptance-20261017.md)。
+
+2026-10-17 简要验收：修正动态预取的固定 24fps 预算，封面缓存增加像素内存预算；新 EDR 挂载存在呈现推进和色彩回退问题，暂时关闭应用入口并保留原型。基础构建与定向检查通过，见 [改动验收与下一步](docs/agent-changes-review-20261017.md)。
+
+本轮开发重点已转为 **IIVE Player**：SwiftUI 原生窗口，同时集成 FSRCNNX 8/16、RIFE Metal 和 Apple VideoToolbox 低延迟超分/2× 插帧。打开根目录 `LumaPlayer.xcodeproj`，选择 **Luma Player → My Mac**，在 Xcode 27 中 Run。
+
+2026-10-17 音频支持收尾：可打开音频文件，普通窗口居中显示封面与泛光，迷你窗口封面填满；加入音频元数据与系统 Now Playing 封面。基础构建、音频解码和封面检查通过，实际界面与听音由用户验证。EDR 离屏共享表面检查已通过，尚未接入播放器显示。使用范围、记录与下一步见 [音频与 EDR 进展](docs/audio-artwork-edr-20261017.md)。
 
 ```sh
 scripts/build-player-modern.sh
-open 'build/Xcode/Build/Products/Debug/IIVE Player.app'
+open 'build/Luma Player.app'
 ```
 
-构建说明、处理限制、Neural Accelerator 优化证据和后续路线见 [播放器 0.4 文档](docs/player-0.4.md)。本机 Apple 超分支持 720p→1080p，不支持 1080p→4K；该场景保留 FSRCNNX。当前是依赖工作区/Homebrew 的开发应用，并非可移走发布的安装包。IINA 插件与 IINA.app 保持独立。
+构建说明、处理限制、Neural Accelerator 优化证据和后续路线见 [播放器 0.4 文档](docs/player-0.4.md)。本机 Apple 超分支持 720p→1080p，不支持 1080p→4K；该场景保留 FSRCNNX。构建仍需要本机工作区/Homebrew；统一交付脚本生成的应用运行时已内置这些非系统依赖。直接从 Xcode Run 的产物仍用于开发，搬移时请使用 `build/Luma Player.app`。IINA 插件与 IINA.app 保持独立。
+
+2026-10-16 拖动更新：进度条拖动时由 libmpv 实际更新主画面，移动阶段快速关键帧定位，松手后精确定位并恢复原播放状态；暂停超分对比刷新改为合并请求。仅完成基础验证，见 [实时拖动与对比刷新](docs/live-scrubbing-20261016.md)。
+
+2026-10-16 后续优化：暂停对比分隔线刷新增加防抖，性能面板加入最近 120 个有效 SR/FI 任务的 P50/P95 与样本数。统计不代表显示延迟；见 [交互调度与耗时说明](docs/interaction-latency-20261016.md)。
+
+2026-10-16 管线收尾：RIFE 不可变 timestep 缓存、批次末尾等待、场景签名优化与有界级联预取已落盘。新增独立编译的 IOSurface→Metal/EDR 桥接原型，尚未接入播放器；三项定向检查及半秒无窗口级联检查通过，不代表性能增益已测定。见 [阶段 5/6 收尾](docs/phase5-6-closeout-20261016.md)。
+
+2026-10-15 预览修正：气泡改用明确的 SwiftUI Layout 上方定位；SDR MKV 优先使用 FFmpeg，并校验帧时间、排除封面流，限制旧预览复用。三章节合成 MKV 的生产解码器检查通过；实际 UI 由用户确认。见 [预览位置与 MKV 修复](docs/preview-position-mkv-fix-20261015.md)。
+
+2026-10-15 章节预览更新：修复预览气泡受轨道高度约束的问题，新增可选 FFmpeg SDR 缩略图回退、自适应播放条与章节/标记导航；合并排队中的绝对定位，并让过时原生推理在阶段边界尽早退出。仅完成基础构建与状态检查，实际效果待用户确认。见 [章节预览与管线更新](docs/chapter-preview-pipeline-20261015.md)。
+
+2026-10-15 定位更新：修复松开进度条后的旧位置回弹，加入请求匹配、慢定位提示与失败恢复；固定时间标签宽度，支持总时长/剩余时间切换。仅完成基础构建和定位状态检查，见 [时间轴与 UI 更新](docs/timeline-seek-ui-20261015.md)。
+
+2026-10-15 交互修复：修复多章节进度条整体偏移，统一缩放时的轨道与鼠标坐标，并移除流光。Live Text 改为直接显示识别全文，支持选择与复制，原画面可展开查看。关闭识别窗口会取消任务并丢弃迟到结果。
+
+2026-10-15 画面工具更新：加入实验性 **Dolby Vision RPU → SDR GPU 映射**、可设置目录的一键截图、原生右键菜单、VisionKit Live Text、持久化时间标记与分段章节进度条。当前仍为 SDR 输出，实际 DV 色彩与交互待用户验证。见 [杜比视界与画面工具说明](docs/dolby-vision-frame-tools-20261015.md)。
+
+2026-10-15 更新：修复进度条预览空白呈现，增加后台预热与移动时的图片复用；新增 **Apple 本地实时字幕**、顶部第二字幕和分别加载字幕的入口。RIFE 场景采样与 FSRCNNX 重复表面推理继续优化。仅完成基础构建及无窗口音频旁路短测，语音模型与实际画面由用户验证。使用与限制见 [实时字幕与预览更新](docs/live-captions-preview-20261015.md)。
 
 2026-10-14 原生模型更新：**FSRCNNX Metal 8/16 已真实接入 MPSGraph，RIFE 已支持 Metal NV12 输入与直接输出**。界面选择 FSRCNNX Metal Fast + RIFE fast / 48fps 即可使用。构建和最小组合检查通过，细节与限制见 [原生模型交付记录](docs/native-models-20261014.md)。
 
@@ -69,7 +144,7 @@ RIFE AI 在 Sidebar 中禁用：原版 IINA 没有可用的解码帧注入接口
 ## 实时 RIFE 独立播放器（原生迭代 0.3）
 
 本轮新增可见播放窗口、异步 RIFE、有界队列、暂停/跳转/倍速和过载回退。
-当前机器可直接打开 `build/IIVE-Player.app`，或执行：
+当前机器可直接打开 `build/Luma Player.app`，或执行：
 
 ```sh
 scripts/run-player.sh "/absolute/path/video.mp4" 48 fast

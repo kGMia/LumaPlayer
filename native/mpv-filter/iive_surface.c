@@ -94,7 +94,11 @@ void iive_surface_normalizer_destroy(struct iive_normalizer *normalizer) {
 }
 bool iive_surface_supported_input(const struct mp_image *img) {
     if (!img) return false;
-    if (!(img->fmt.flags & MP_IMGFLAG_HWACCEL)) return mp_sws_supported_format(img->imgfmt);
+    // mp_image_sethwfmt() sets img->fmt to the *software* subformat descriptor.
+    // Test the storage format instead, or VT NV12/P010 is sent to swscale as if
+    // planes[0..1] held pixels (the CVPixelBuffer actually lives in planes[3]).
+    if (!(mp_imgfmt_get_desc(img->imgfmt).flags & MP_IMGFLAG_HWACCEL))
+        return mp_sws_supported_format(img->imgfmt);
     if (img->imgfmt!=IMGFMT_VIDEOTOOLBOX || !img->planes[3]) return false;
     CVPixelBufferRef p=(CVPixelBufferRef)img->planes[3];
     enum mp_imgfmt sw_fmt=vt_software_imgfmt(p);
@@ -102,7 +106,9 @@ bool iive_surface_supported_input(const struct mp_image *img) {
         mp_sws_supported_format(sw_fmt);
 }
 int iive_surface_scale_input(struct mp_sws_context *sws, struct mp_image *dst, struct mp_image *src) {
-    if (!(src->fmt.flags & MP_IMGFLAG_HWACCEL)) return mp_sws_scale(sws,dst,src);
+    if (!src || !dst) return -1;
+    if (!(mp_imgfmt_get_desc(src->imgfmt).flags & MP_IMGFLAG_HWACCEL))
+        return mp_sws_scale(sws,dst,src);
     if (src->imgfmt!=IMGFMT_VIDEOTOOLBOX || !src->planes[3]) return -1;
     CVPixelBufferRef p=(CVPixelBufferRef)src->planes[3];
     enum mp_imgfmt sw_fmt=vt_software_imgfmt(p);

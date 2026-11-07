@@ -5,7 +5,7 @@ import CoreMedia
 import RifeMetal
 import EnhancerCore
 
-func convert(input:URL,output:URL,fps:Int32,tier:RifeQualityTier,autoFallback:Bool) async throws {
+func convert(input:URL,output:URL,fps:Int32,tier:RifeQualityTier,autoFallback:Bool,modelURL:URL=RifeConfiguration.bundledModelURL) async throws {
  guard input.standardizedFileURL != output.standardizedFileURL,!FileManager.default.fileExists(atPath:output.path) else {throw BackendError.invalid("Output must be a new file; refusing overwrite")}
  let begin=ProcessInfo.processInfo.systemUptime
  let asset=AVURLAsset(url:input)
@@ -19,7 +19,7 @@ func convert(input:URL,output:URL,fps:Int32,tier:RifeQualityTier,autoFallback:Bo
  let nominalFPS=try await track.load(.nominalFrameRate)
  guard nominalFPS>0,Double(nominalFPS)<Double(fps) else {throw BackendError.invalid("Source FPS must be known and below target FPS")}
  let dims=CMVideoFormatDescriptionGetDimensions(format),w=Int(dims.width),h=Int(dims.height)
- let processor=try FrameProcessor(width:w,height:h,fps:fps,tier:tier,autoFallback:autoFallback)
+ let processor=try FrameProcessor(width:w,height:h,fps:fps,tier:tier,autoFallback:autoFallback,modelURL:modelURL)
  let reader=try AVAssetReader(asset:asset)
  let readVideo=AVAssetReaderTrackOutput(track:track,outputSettings:[kCVPixelBufferPixelFormatTypeKey as String:kCVPixelFormatType_32BGRA,kCVPixelBufferMetalCompatibilityKey as String:true,kCVPixelBufferIOSurfacePropertiesKey as String:[:]])
  readVideo.alwaysCopiesSampleData=false;reader.add(readVideo)
@@ -77,7 +77,7 @@ func convert(input:URL,output:URL,fps:Int32,tier:RifeQualityTier,autoFallback:Bo
   guard writer.status == .completed else{throw writer.error ?? BackendError.invalid("Encode failed")}
  }catch {reader.cancelReading();writer.cancelWriting();await waitForAudio(audioGroup);throw error}
  let wall=ProcessInfo.processInfo.systemUptime-begin
- try Stats.emit(["kind":"decode_rife_encode","output":output.path,"tier":tier.rawValue,"target_fps":fps,"output_frames":count,"synthesized_frames":synthesized,"wall_seconds":wall,"throughput_fps":Double(count)/wall,"media_seconds":CMTimeGetSeconds(CMTimeAdd(lastPTS,lastDuration)),"latency_per_pair_recent_4096":Stats.summarize(processor.inferenceMilliseconds),"inference_pairs_total":processor.inferenceCount,"inference_mean_ms_all":processor.inferenceCount>0 ? processor.inferenceTotalMilliseconds/Double(processor.inferenceCount) : NSNull(),"fallback_to_source_cadence":processor.fallback,"scene_cuts":processor.sceneCuts,"duplicates":processor.duplicates,"peak_rss_bytes":Stats.memory(),"audio":"first track passthrough with original PTS","dropped_frames":0,"player_realtime":NSNull(),"gpu_utilization":NSNull(),"note":"Bounded synchronous pipeline, at most one adjacent pair and one interval of output frames. Includes setup and graph cold start; MOV output is not stock IINA realtime integration."])
+ try Stats.emit(["kind":"decode_rife_encode","model_file":modelURL.lastPathComponent,"output":output.path,"tier":tier.rawValue,"target_fps":fps,"output_frames":count,"synthesized_frames":synthesized,"wall_seconds":wall,"throughput_fps":Double(count)/wall,"media_seconds":CMTimeGetSeconds(CMTimeAdd(lastPTS,lastDuration)),"latency_per_pair_recent_4096":Stats.summarize(processor.inferenceMilliseconds),"inference_pairs_total":processor.inferenceCount,"inference_mean_ms_all":processor.inferenceCount>0 ? processor.inferenceTotalMilliseconds/Double(processor.inferenceCount) : NSNull(),"fallback_to_source_cadence":processor.fallback,"scene_cuts":processor.sceneCuts,"duplicates":processor.duplicates,"peak_rss_bytes":Stats.memory(),"audio":"first track passthrough with original PTS","dropped_frames":0,"player_realtime":NSNull(),"gpu_utilization":NSNull(),"note":"Bounded synchronous pipeline, at most one adjacent pair and one interval of output frames. Includes setup and graph cold start; MOV output is not stock IINA realtime integration."])
 }
 
 // This object exclusively owns audio reads/appends on its worker. AVAssetWriter

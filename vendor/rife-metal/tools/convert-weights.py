@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Converts a Practical-RIFE v4.26 PyTorch checkpoint (flownet.pkl) into a .rmw file.
+Converts audited Practical-RIFE v4.26 / v4.25-lite checkpoints into .rmw.
 
 Source download (one-time setup):
     python3 -m venv /tmp/gdown-venv && /tmp/gdown-venv/bin/pip install gdown
@@ -14,7 +14,9 @@ Usage:
         --out Sources/RifeMetal/Resources/rife-v4.26.rmw
 
 Architecture (v4.26):
-    - 5 IFBlocks with channel widths [192, 128, 96, 64, 32]
+    - v4.26: channels [192, 128, 96, 64, 32], scales [16, 8, 4, 2, 1]
+    - v4.25-lite: channels [192, 128, 96, 64, 24], scales [32, 16, 8, 4, 1]
+    - Both overwrite the mask at each stage; only flow accumulates
     - scale_list = [16, 8, 4, 2, 1]
     - Encoder Head: 3 → 4 ch (cnn0..cnn3)
     - Each ResConv has weight + bias + beta (per-channel learnable scale)
@@ -34,6 +36,13 @@ from _rmw_format import write_rmw
 _V4_26 = {
     "ifblock_channels": [192, 128, 96, 64, 32],
     "scale_list":       [16, 8, 4, 2, 1],
+}
+
+_PROFILES = {
+    "rife-v4.26": _V4_26,
+    # Official RIFE_HDv3.py inference(), not IFNet.forward's stale default.
+    "rife-v4.25-lite": {"ifblock_channels": [192, 128, 96, 64, 24],
+                        "scale_list": [32, 16, 8, 4, 1]},
 }
 
 # in_channels for conv0's first layer per IFBlock.
@@ -70,10 +79,12 @@ def _to_rmw_array(tensor, name):
             arr = arr.reshape(1, 1, 1, -1)
         else:
             arr = np.transpose(arr, (2, 3, 1, 0))  # OIHW → HWIO
+    if not np.isfinite(arr).all() or (np.abs(arr) > np.finfo(np.float16).max).any():
+        raise ValueError(f"non-finite or out-of-fp16-range weights: {name}")
     return arr
 
 
-def _collect_tensors(state):
+def _collect_tensors(state, model="rife-v4.26"):
     """Extract and validate all 158 tensors for rife-v4.26.
 
     Returns (list_of_(name, ndarray), list_of_error_strings).
@@ -101,7 +112,7 @@ def _collect_tensors(state):
     add("encode.cnn3.bias",   (4,))
 
     # Per-block tensors: 5 blocks × 30 tensors each = 150 tensors
-    for i, c in enumerate(_V4_26["ifblock_channels"]):
+    for i, c in enumerate(_PROFILES[model]["ifblock_channels"]):
         in_ch = _BLOCK_IN_CH[i]
 
         # conv0: two-layer nn.Sequential; each layer is itself nn.Sequential([Conv2d, LeakyReLU]).
@@ -124,6 +135,14 @@ def _collect_tensors(state):
         add(f"block{i}.lastconv.0.weight", (c, 4 * 13, 4, 4))
         add(f"block{i}.lastconv.0.bias",   (4 * 13,))
 
+    expected_names = {name for name, _ in tensors}
+    if not errors:
+        # Official archives retain training-only teacher/timestep branches;
+        # the audited IFNet inference source does not invoke either branch.
+        extras = {key for key in state if key not in expected_names
+                  and not key.startswith(("teacher.", "caltime."))}
+        if extras:
+            errors.append("unexpected tensor keys: " + ", ".join(sorted(extras)))
     return tensors, errors
 
 
@@ -131,6 +150,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pytorch-checkpoint", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--model", choices=sorted(_PROFILES), default="rife-v4.26")
     args = parser.parse_args()
 
     if not args.pytorch_checkpoint.exists():
@@ -143,7 +163,7 @@ def main() -> int:
         state = state["state_dict"]
     state = {k.removeprefix("module."): v for k, v in state.items()}
 
-    tensors, errors = _collect_tensors(state)
+    tensors, errors = _collect_tensors(state, args.model)
     if errors:
         print(f"convert-weights: {len(errors)} schema error(s):", file=sys.stderr)
         for e in errors:
@@ -152,9 +172,9 @@ def main() -> int:
 
     write_rmw(
         out_path=args.out,
-        model="rife-v4.26",
-        ifblock_channels=_V4_26["ifblock_channels"],
-        scale_list=_V4_26["scale_list"],
+        model=args.model,
+        ifblock_channels=_PROFILES[args.model]["ifblock_channels"],
+        scale_list=_PROFILES[args.model]["scale_list"],
         tensors=tensors,
     )
     print(f"wrote {args.out} ({len(tensors)} tensors)")

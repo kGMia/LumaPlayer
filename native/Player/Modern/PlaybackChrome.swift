@@ -19,16 +19,21 @@ struct PlayerSymbol: View {
 /// transport panel or dragging sliders triggers a container-wide press state that recolors child controls.
 struct PlaybackGlass: ViewModifier {
     var cornerRadius: CGFloat = 24
+    var scrimStrength: Double = 1
     @Environment(\.accessibilityReduceTransparency) private var opaque
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if opaque {
+        if opaque || contrast == .increased {
             content.background(Color(nsColor: .windowBackgroundColor), in: shape)
         } else {
-            let scrim = colorScheme == .light ? Color.white.opacity(0.18) : Color.black.opacity(0.28)
-            content.background(scrim, in: shape)
-                .glassEffect(.regular, in: shape)
+            let scrim = colorScheme == .light ? Color.white.opacity(0.18 * scrimStrength) : Color.black.opacity(0.28 * scrimStrength)
+            content.background {
+                shape
+                    .fill(scrim)
+                    .glassEffect(.regular, in: shape)
+            }
         }
     }
 }
@@ -42,12 +47,12 @@ struct OSDToastView: View {
             if !osd.symbol.isEmpty {
                 PlayerSymbol(name: osd.symbol)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
             }
             Text(osd.text)
                 .contentTransition(.numericText())
                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -61,13 +66,13 @@ struct OSDToastView: View {
     }
 }
 
-/// Consistent white icon/label button style that never shifts tint when panel responder state changes.
+/// Adaptive semantic icon/label button style that never shifts tint when panel responder state changes.
 private struct TransportButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(minWidth: 28, minHeight: 30)
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .opacity(configuration.isPressed ? 0.65 : 1.0)
             .scaleEffect(!reduceMotion && configuration.isPressed ? 0.92 : 1)
             .animation(reduceMotion ? nil : .snappy(duration: 0.16), value: configuration.isPressed)
@@ -96,14 +101,14 @@ struct CleanWhiteVolumeBar: View {
             let fillW = max(barH, w * normalized)
             ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
-                    .fill(.white.opacity(0.24))
+                    .fill(.primary.opacity(0.20))
                     .frame(height: barH)
                 Capsule(style: .continuous)
-                    .fill(.white.opacity(0.95))
+                    .fill(.primary.opacity(0.9))
                     .frame(width: normalized > 0.001 ? fillW : 0, height: barH)
                 if isHovering || isDragging {
                     Circle()
-                        .fill(.white)
+                        .fill(.primary)
                         .frame(width: 10, height: 10)
                         .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                         .offset(x: min(max(0, w * normalized - 5), max(0, w - 10)))
@@ -160,7 +165,7 @@ private struct PlaybackSpeedMenu: View {
         } label: {
             Text("\(model.speed.formatted())×")
                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .frame(width: 52, height: 26)
                 .contentShape(Rectangle())
         }
@@ -208,17 +213,18 @@ private struct PlaybackOptionsMenu: View {
             Button {
                 model.previousFile()
             } label: {
-                Label("Previous Video", systemImage: "backward.end")
+                Label("Previous Item", systemImage: "backward.end")
             }
             .disabled(!model.canPrevious)
             Button {
                 model.nextFile()
             } label: {
-                Label("Next Video", systemImage: "forward.end")
+                Label("Next Item", systemImage: "forward.end")
             }
             .disabled(!model.canNext)
 
             TimelineNavigationMenu(model: model)
+            ABLoopMenu(model: model)
             if compact {
                 Menu {
                     ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
@@ -227,7 +233,10 @@ private struct PlaybackOptionsMenu: View {
                         }
                     }
                 } label: { Label("Playback Speed", systemImage: "speedometer") }
-                Toggle(isOn: $model.showVideoInfo) { Label("Video Information", systemImage: "info.circle") }
+                Menu {
+                    Toggle("Summary Card", isOn: $model.showSummaryCard)
+                    Toggle("Video Information", isOn: $model.showVideoInfo)
+                } label: { Label("Video Information", systemImage: model.hasAnyHUDCard ? "info.circle.fill" : "info.circle") }
                 Button("Mini Player", systemImage: "pip.enter") { model.toggleMiniPlayer() }
                     .disabled(model.windowTransition)
                 Menu {
@@ -263,6 +272,7 @@ private struct PlaybackOptionsMenu: View {
             } label: {
                 Label("Rotation", systemImage: "rotate.right")
             }
+            VideoGeometryControls(model: model)
 
             Menu {
                 Button("Neutral") { model.applyLook("neutral") }
@@ -296,17 +306,66 @@ private struct PlaybackOptionsMenu: View {
 
             Divider()
             Menu {
-                Picker("Bottom", selection: Binding(get: { model.liveCaptionPlacement == "bottom" ? "live" : model.subtitleID }, set: { model.selectSubtitle($0, secondary: false) })) {
+                Picker("Primary Subtitles", selection: Binding(get: { !model.systemHDRActive && model.liveCaptionPlacement == "bottom" ? "live" : model.subtitleID }, set: { model.selectSubtitle($0, secondary: false) })) {
                     Text("Off").tag("no")
-                    Label("Live Captions · Apple Speech", systemImage: "waveform").tag("live")
+                    Label("Live Captions · Apple Speech", systemImage: "waveform").tag("live").disabled(model.systemHDRActive)
                     ForEach(model.subtitles) { Text($0.title).tag(String($0.id)) }
                 }
-                Picker("Top · Second Subtitles", selection: Binding(get: { model.liveCaptionPlacement == "top" ? "live" : model.secondarySubtitleID }, set: { model.selectSubtitle($0, secondary: true) })) {
+                Picker(model.secondarySubtitlePosition == "below" ? String(localized: "Second Subtitles · Below") : String(localized: "Second Subtitles · Top"), selection: Binding(get: { !model.systemHDRActive && model.liveCaptionPlacement == "top" ? "live" : model.secondarySubtitleID }, set: { model.selectSubtitle($0, secondary: true) })) {
                     Text("Off").tag("no")
-                    Label("Live Captions · Apple Speech", systemImage: "waveform").tag("live")
+                    Label("Live Captions · Apple Speech", systemImage: "waveform").tag("live").disabled(model.systemHDRActive)
                     ForEach(model.subtitles) { Text($0.title).tag(String($0.id)) }
                 }
+                Picker("Second Subtitle Position", selection: $model.secondarySubtitlePosition) {
+                    Text("Below Primary Subtitles").tag("below")
+                    Text("Top of Video").tag("top")
+                }
+                if model.secondarySubtitlePosition == "below" {
+                    Picker("Bilingual Subtitle Spacing", selection: $model.bilingualSubtitleSpacing) {
+                        Text("Compact").tag("compact")
+                        Text("Standard").tag("standard")
+                    }
+                }
+                Divider()
+                Menu("Subtitle Style") {
+                    Picker("Subtitle Font", selection: $model.subtitleFont) {
+                        ForEach(SubtitleAppearance.fontPresets) { preset in
+                            Text(preset.title).tag(preset.id)
+                        }
+                    }
+                    Picker("Primary Subtitle Size", selection: Binding(
+                        get: { Int(model.subtitleFontSize.rounded()) },
+                        set: { model.subtitleFontSize = Double($0) }
+                    )) {
+                        ForEach(SubtitleAppearance.sizePresets, id: \.self) { pt in
+                            Text("\(pt) pt").tag(pt)
+                        }
+                    }
+                    Picker("Primary Subtitle Color", selection: $model.subtitleColor) {
+                        ForEach(SubtitleAppearance.colorPresets) { preset in
+                            Text(preset.title).tag(preset.id)
+                        }
+                    }
+                    Divider()
+                    Picker("Second Subtitle Size", selection: Binding(
+                        get: { Int(model.secondarySubtitleFontSize.rounded()) },
+                        set: { model.secondarySubtitleFontSize = Double($0) }
+                    )) {
+                        ForEach(SubtitleAppearance.sizePresets, id: \.self) { pt in
+                            Text("\(pt) pt").tag(pt)
+                        }
+                    }
+                    Picker("Second Subtitle Color", selection: $model.secondarySubtitleColor) {
+                        ForEach(SubtitleAppearance.colorPresets) { preset in
+                            Text(preset.title).tag(preset.id)
+                        }
+                    }
+                    Divider()
+                    Toggle("Apply Style to ASS / Styled Subtitles", isOn: $model.subtitleOverrideASS)
+                }
+                Divider()
                 Button("Load Subtitles…", systemImage: "doc.badge.plus") { model.openPanel(subtitle: true) }
+                Button("Load Second Subtitles…", systemImage: "captions.bubble") { model.openPanel(subtitle: true, secondary: true) }
             } label: { Label("Subtitles", systemImage: "captions.bubble") }
 
             Toggle(isOn: $model.showTimelinePreview) {
@@ -335,13 +394,74 @@ private struct PlaybackOptionsMenu: View {
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .frame(width: 28, height: 26)
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .help("Playback options")
+    }
+}
+
+struct TransportMediaTitle: View {
+    let title: String
+    var artwork: NSImage? = nil
+    var compact = false
+    var body: some View {
+        HStack(spacing: compact ? 8 : 10) {
+            if let artwork {
+                Image(nsImage: artwork)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: compact ? 5 : 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: compact ? 5 : 6, style: .continuous)
+                            .strokeBorder(.primary.opacity(0.14), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.28), radius: 3, y: 1)
+                    .frame(maxWidth: compact ? 42 : 56, maxHeight: compact ? 24 : 34)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+            Text(title)
+                .font(compact ? .caption.weight(.medium) : .callout.weight(.medium))
+                .foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Now Playing: \(title)"))
+    }
+}
+
+/// Scope activity transitions to the message, never to the playback clock/slider.
+private struct PlaybackProgressNotice: View {
+    let message: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var delayedMessage: String?
+    var body: some View {
+        Group {
+            if let delayedMessage {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text(delayedMessage).font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }.transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: delayedMessage)
+        .task(id: message) {
+            guard let message else {
+                delayedMessage = nil
+                return
+            }
+            if delayedMessage != nil {
+                delayedMessage = message
+                return
+            }
+            do { try await Task.sleep(for: .milliseconds(280)) } catch { return }
+            guard !Task.isCancelled else { return }
+            delayedMessage = message
+        }
     }
 }
 
@@ -355,36 +475,58 @@ struct FloatingTransport: View {
     @State private var transportWidth: CGFloat = 0
     var body: some View {
         VStack(spacing: 12) {
-            if model.enhancementWarming {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.mini)
-                    Text(model.paused ? "Preparing enhancement · staying paused" : "Preparing enhancement…")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-                .transition(.opacity)
+            if !model.transportTitle.isEmpty {
+                TransportMediaTitle(title: model.transportTitle, artwork: model.transportArtwork)
+                    .onHover { model.transportTitleHovered = $0 }
+                    .onDisappear { model.transportTitleHovered = false }
+                    .transition(.opacity)
             }
+            if let position = model.resumedFrom {
+                HStack(spacing: 10) {
+                    Label("Resumed from \(Duration.seconds(position).formatted(.time(pattern: position >= 3600 ? .hourMinuteSecond : .minuteSecond)))", systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button("Start Over", systemImage: "backward.end.fill") { model.startOverAfterResume() }
+                        .buttonStyle(.bordered).controlSize(.small).disabled(!model.mediaSeekable)
+                    Button { model.dismissResumeNotice() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).accessibilityLabel("Dismiss resume message")
+                }.transition(.opacity)
+            }
+            PlaybackProgressNotice(message: model.playbackActivity.progressMessage(
+                paused: model.paused, retryAttempt: model.networkRetryAttempt))
             PlaybackTimeline(model: model, timeline: model.timeline, scrubbing: $scrubbing)
+                .zIndex(20)
             // Keep a single set of popover anchors across width changes.
             transportControls(compact: transportWidth < 680)
+                .zIndex(1)
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             if abs(transportWidth - width) > 1 { transportWidth = width }
         }
         .modifier(PlaybackGlass(cornerRadius: 24))
-        .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: model.enhancementWarming)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.transportTitle.isEmpty)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.transportArtwork != nil)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.resumedFrom != nil)
     }
     private func transportControls(compact: Bool) -> some View {
-        let queueActive = model.queuePopover || (model.inspector && !model.fullScreen && model.sidebarTab == "queue")
+        let queueActive = model.queuePopover
         let settingsActive = settings || (model.inspector && !model.fullScreen && model.sidebarTab == "enhance")
         return HStack(spacing: compact ? 8 : 12) {
+            Button { model.previousOrRestart() } label: { Image(systemName: "backward.end.fill").font(.callout) }
+                .disabled(!model.hasActiveMediaSession && !model.canPrevious)
+                .accessibilityLabel("Previous or Restart").help("Previous during the first 10 seconds or first quarter; otherwise restart (⌥⌘←)")
             Button { model.skip(-1) } label: { Image(systemName: "gobackward") }
+                .disabled(!model.hasActiveMediaSession)
                 .accessibilityLabel("Back \(Int(model.seekSeconds)) seconds").help("Back \(Int(model.seekSeconds)) seconds (←)")
             Button { model.togglePause() } label: { PlayerSymbol(name: model.paused ? "play.fill" : "pause.fill").font(.system(size: 21, weight: .semibold)).frame(width: 32) }
                 .accessibilityLabel(model.paused ? "Play" : "Pause").help("Play / Pause (Space)")
             Button { model.skip(1) } label: { Image(systemName: "goforward") }
+                .disabled(!model.hasActiveMediaSession)
                 .accessibilityLabel("Forward \(Int(model.seekSeconds)) seconds").help("Forward \(Int(model.seekSeconds)) seconds (→)")
+            Button { model.nextFile() } label: { Image(systemName: "forward.end.fill").font(.callout) }
+                .disabled(!model.canNext)
+                .accessibilityLabel("Next Item").help("Next video (⌥⌘→)")
             if !compact { PlaybackSpeedMenu(model: model) }
             PlaybackOptionsMenu(compact: compact, model: model)
             Spacer(minLength: 0)
@@ -398,24 +540,32 @@ struct FloatingTransport: View {
             )
             .accessibilityLabel("Volume")
             }
-            Button { model.showSidebar("queue") } label: {
+            Button { model.quickSettings = false; model.queuePopover.toggle() } label: {
                 Image(systemName: "list.bullet")
                     .opacity(queueActive ? 1.0 : 0.78)
             }
             .accessibilityLabel("Play Queue").help("Play Queue (⇧⌘P)")
             .popover(isPresented: $model.queuePopover, arrowEdge: .top) {
-                QueueView(model: model)
-                    .frame(width: 360, height: 420)
-                    .background(Color.black.opacity(0.14))
+                QueueView(model: model, metadataActive: model.queuePopover)
                     .presentationBackground(.ultraThinMaterial)
                     .preferredColorScheme(model.effectiveChromeColorScheme)
             }
             if !compact {
-            Button { model.showVideoInfo.toggle() } label: {
-                PlayerSymbol(name: model.showVideoInfo ? "info.circle.fill" : "info.circle")
-                    .opacity(model.showVideoInfo ? 1.0 : 0.78)
+            Menu {
+                Toggle("Summary Card", isOn: $model.showSummaryCard)
+                Toggle("Video Information", isOn: $model.showVideoInfo)
+            } label: {
+                PlayerSymbol(name: model.hasAnyHUDCard ? "info.circle.fill" : "info.circle")
+                    .font(.title3)
+                    .foregroundStyle(.primary)
+                    .opacity(model.hasAnyHUDCard ? 1.0 : 0.78)
+                    .frame(width: 28, height: 26)
+                    .contentShape(Rectangle())
             }
-            .accessibilityLabel("Video information").help("Video information (⌘I)")
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .accessibilityLabel("Video information")
+            .help("Video information (⌘I)")
             }
             Button { model.queuePopover = false; settings.toggle() } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -442,12 +592,12 @@ struct FloatingTransport: View {
 
 }
 
-/// Preview locally while dragging; send one exact seek on release. Shared by both window modes.
+/// Update real playback frames while dragging, with one final exact seek on release.
 /// Uses a clean QuickTime-style minimalist white capsule bar and observes `PlayerTimelineState` independently.
 struct PlaybackTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var model: PlayerModel
-    @ObservedObject var timeline: PlayerTimelineState
+    let timeline: PlayerTimelineState
     @Binding var scrubbing: Bool
     var compact = false
     @AppStorage("timelineShowsRemaining") private var showsRemaining = false
@@ -462,14 +612,16 @@ struct PlaybackTimeline: View {
     @State private var previewImageTime: Double?
     @State private var previewStatus: String?
     @State private var stalePreviewSince: Double?
+    @State private var lastShownPreviewTime: Double = 0
+    @State private var lastShownPreviewRatio: CGFloat = 0
     private var limit: Double { timeline.duration.isFinite ? max(0.001, timeline.duration) : 1 }
     private func bounded(_ value: Double) -> Double { value.isFinite ? min(limit, max(0, value)) : 0 }
     private var activeValue: Double { bounded(preview ?? timeline.presentationPosition) }
     private var timeLabelWidth: CGFloat { timeline.duration >= 3600 ? (compact ? 64 : 76) : (compact ? 40 : 56) }
-    private var showSeeking: Bool { delayedSeekID != nil && delayedSeekID == timeline.pendingSeek?.id && !scrubbing }
+    private var showSeeking: Bool { delayedSeekID != nil && delayedSeekID == timeline.pendingSeek?.id && !scrubbing && model.playbackActivity == .seeking }
     private var progressRatio: CGFloat { CGFloat(min(1, max(0, activeValue / limit))) }
     private var activePreviewTime: Double? {
-        guard model.showTimelinePreview, model.loaded, timeline.duration > 0 else { return nil }
+        guard model.path.hasPrefix("/"), model.showTimelinePreview, model.hasMotionVideo, model.loaded, timeline.duration > 0 else { return nil }
         return preview ?? hoverTime
     }
     private var requestedPreviewTime: Double? {
@@ -483,8 +635,11 @@ struct PlaybackTimeline: View {
         return "\(model.path)#\(Int((target * 2).rounded()))#sdr=\(model.sdr)"
     }
     var body: some View {
-        let interactive = model.loaded && timeline.duration > 0
+        let interactive = model.loaded && model.mediaSeekable && timeline.duration > 0
         let knobSize: CGFloat = compact ? 9 : 11
+        let isShowingPreview = activePreviewTime != nil && sliderWidth > 16
+        let displayTime = activePreviewTime ?? lastShownPreviewTime
+        let displayRatio = activePreviewTime != nil ? (preview != nil ? CGFloat(bounded(displayTime) / limit) : hoverRatio) : lastShownPreviewRatio
         HStack(spacing: compact ? 6 : 10) {
             Text(time(activeValue))
                 .frame(width: timeLabelWidth, alignment: .trailing)
@@ -492,15 +647,19 @@ struct PlaybackTimeline: View {
 
             GeometryReader { geometry in
                 let trackWidth = max(0, geometry.size.width)
+                let bubbleW: CGFloat = compact ? 132 : 172
+                let rawX = displayRatio * trackWidth - bubbleW * 0.5
+                let clampedX = min(max(0, rawX), max(0, trackWidth - bubbleW))
                 ZStack(alignment: .leading) {
                     ChapterTrack(chapters: model.chapters, markers: model.markers,
                                  duration: limit, position: activeValue,
                                  hover: scrubbing ? activeValue : (isHoveringTrack ? Double(hoverRatio) * limit : nil),
                                  width: trackWidth, compact: compact)
+                    ABLoopOverlay(loop: model.playbackGeometry, duration: limit, width: trackWidth)
 
                     if (isHoveringTrack || scrubbing || timeline.pendingSeek != nil) && interactive {
                         Circle()
-                            .fill(.white)
+                            .fill(.primary)
                             .frame(width: knobSize, height: knobSize)
                             .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
                             .offset(x: min(max(0, trackWidth * progressRatio - knobSize * 0.5), max(0, trackWidth - knobSize)))
@@ -510,7 +669,7 @@ struct PlaybackTimeline: View {
                 .contentShape(Rectangle())
                 .accessibilityElement()
                 .accessibilityLabel("Playback position")
-                .accessibilityValue("\(time(activeValue)) of \(time(timeline.duration))" + (timeline.pendingSeek == nil ? "" : ", seeking"))
+                .accessibilityValue("\(time(activeValue)) of \(time(timeline.duration))" + (timeline.pendingSeek == nil ? "" : ", seeking") + (model.playbackGeometry.hasLoopPoints ? ", " + model.playbackGeometry.loopDescription : ""))
                 .accessibilityAdjustableAction { direction in
                     guard interactive else { return }
                     model.seek(bounded(timeline.presentationPosition + (direction == .increment ? model.seekSeconds : -model.seekSeconds)))
@@ -529,7 +688,14 @@ struct PlaybackTimeline: View {
                         if !isHoveringTrack { isHoveringTrack = true }
                         let ratio = min(1, max(0, location.x / max(1, trackWidth)))
                         hoverRatio = ratio
-                        hoverTime = model.showTimelinePreview ? bounded(Double(ratio) * limit) : nil
+                        lastShownPreviewRatio = ratio
+                        if model.showTimelinePreview {
+                            let target = bounded(Double(ratio) * limit)
+                            hoverTime = target
+                            lastShownPreviewTime = target
+                        } else {
+                            hoverTime = nil
+                        }
                     case .ended:
                         isHoveringTrack = false
                         hoverTime = nil
@@ -544,11 +710,18 @@ struct PlaybackTimeline: View {
                             if !scrubbing { scrubbing = true }
                             let ratio = min(1, max(0, gesture.location.x / max(1, trackWidth)))
                             hoverRatio = ratio
-                            preview = bounded(Double(ratio) * limit)
+                            lastShownPreviewRatio = ratio
+                            let target = bounded(Double(ratio) * limit)
+                            preview = target
+                            lastShownPreviewTime = target
+                            model.previewScrub(to: target, expectedPath: model.path)
                         }
                         .onEnded { gesture in
                             defer { dragPath = nil }
-                            guard interactive, dragPath == model.path else { scrubbing = false; preview = nil; return }
+                            guard interactive, dragPath == model.path else {
+                                if let dragPath { model.cancelScrubbing(for: dragPath) }
+                                scrubbing = false; preview = nil; return
+                            }
                             let ratio = min(1, max(0, gesture.location.x / max(1, trackWidth)))
                             let finalTime = bounded(Double(ratio) * limit)
                             // Establish the pending target before dropping the local
@@ -559,26 +732,27 @@ struct PlaybackTimeline: View {
                         }
                 )
                 .overlay(alignment: .topLeading) {
-                    if let targetTime = activePreviewTime, trackWidth > 16 {
-                        let bubbleW: CGFloat = compact ? 132 : 172
-                        let ratio = preview != nil ? CGFloat(bounded(targetTime) / limit) : hoverRatio
-                        let rawX = ratio * trackWidth - bubbleW * 0.5
-                        let clampedX = min(max(0, rawX), max(0, trackWidth - bubbleW))
+                    if trackWidth > 16 && (isShowingPreview || lastShownPreviewTime > 0) {
                         TimelinePreviewAboveTrack(x: clampedX) {
                             TimelinePreviewBubble(
                                 image: previewImage,
-                                timestamp: time(targetTime),
+                                timestamp: time(displayTime),
                                 imageTimestamp: previewImageTime.map(time),
-                                chapter: model.chapterTitle(at: targetTime),
+                                chapter: model.chapterTitle(at: displayTime),
                                 status: previewStatus,
                                 compact: compact
                             )
                             .frame(width: bubbleW)
                             .fixedSize(horizontal: false, vertical: true)
+                            .opacity(isShowingPreview ? 1 : 0)
+                            .scaleEffect(reduceMotion || isShowingPreview ? 1.0 : 0.90, anchor: .bottom)
+                            .offset(y: reduceMotion || isShowingPreview ? 0 : 7)
                         }
                         .frame(width: trackWidth, height: 0, alignment: .topLeading)
                         .allowsHitTesting(false)
-                        .transition(.opacity)
+                        .zIndex(50)
+                        .animation(reduceMotion ? nil : .snappy(duration: 0.18, extraBounce: 0), value: isShowingPreview)
+                        // Follow the pointer directly; animate only bubble appearance, not every mouse event.
                     }
                 }
             }
@@ -596,13 +770,15 @@ struct PlaybackTimeline: View {
             }
         }
         .font(.caption.monospacedDigit())
-        .foregroundStyle(.white.opacity(0.82))
+        .foregroundStyle(.secondary)
         .overlay(alignment: .topLeading) {
             if showSeeking {
                 Label("Seeking…", systemImage: "clock")
-                    .font(.caption2).foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(.black.opacity(0.65), in: Capsule())
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .glassEffect(.regular, in: Capsule())
                     .offset(y: -25)
                     .allowsHitTesting(false)
             }
@@ -614,12 +790,18 @@ struct PlaybackTimeline: View {
             guard !Task.isCancelled, timeline.pendingSeek?.id == request.id else { return }
             delayedSeekID = request.id
         }
-        .task(id: "\(model.path)|\(model.showTimelinePreview)|\(model.loaded)|\(model.sdr)") {
-            guard model.showTimelinePreview, model.loaded, !model.path.isEmpty else { return }
+        .task(id: "\(model.path)|\(model.showTimelinePreview)|\(model.hasMotionVideo)|\(model.loaded)|\(model.sdr)") {
+            guard model.showTimelinePreview, model.hasMotionVideo, model.loaded, model.path.hasPrefix("/") else { return }
             let path = model.path
             // Low-rate warming shares the same bounded thumbnail decode lane.
             var index = 0
             while !Task.isCancelled, path == model.path {
+                // Do not launch speculative decoding during seek/model startup
+                // or near the RIFE budget. Hover still uses the interactive lane.
+                guard model.canPrewarmTimeline else {
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
                 let candidate = index == 0 ? timeline.position : timeline.duration * Double(index % 12) / 12
                 await model.timelinePreviews.prewarm(for: path, at: max(0, candidate), allowSDRFallback: model.sdr)
                 index += 1
@@ -630,7 +812,14 @@ struct PlaybackTimeline: View {
         .task(id: previewBucketKey) {
             guard let target = requestedPreviewTime, !model.path.isEmpty else { return }
             let path = model.path
-            // Keep the previous image while decoding. Its actual timestamp stays visible.
+            await model.timelinePreviews.noteInteraction()
+            // The independent presentation task shows nearby cached frames
+            // immediately. Only new decode requests wait for a stable bucket;
+            // SwiftUI cancels this delay when the pointer moves or leaves.
+            do { try await Task.sleep(for: .milliseconds(75)) }
+            catch { return }
+            guard !Task.isCancelled, path == model.path else { return }
+            // Keep the previous image while decoding; the actual timestamp remains hidden.
             let result = await model.timelinePreviews.thumbnail(for: path, at: target, allowSDRFallback: model.sdr)
             guard !Task.isCancelled, path == model.path else { return }
             if let result {
@@ -673,8 +862,10 @@ struct PlaybackTimeline: View {
             hoverTime = nil
             isHoveringTrack = false
             previewImage = nil; previewImageTime = nil; previewStatus = nil; stalePreviewSince = nil
+            lastShownPreviewTime = 0; lastShownPreviewRatio = 0
         }
         .onDisappear {
+            if let dragPath { model.cancelScrubbing(for: dragPath) }
             dragPath = nil
             scrubbing = false
             preview = nil
@@ -694,6 +885,7 @@ struct PlaybackTimeline: View {
 struct EnhancementControls: View {
     @ObservedObject var model: PlayerModel
     var body: some View {
+        SystemPlaybackNotice(model: model)
         Group {
             Toggle("Enhancement", isOn: $model.master)
             Picker("Super Resolution", selection: $model.sr) {
@@ -704,8 +896,11 @@ struct EnhancementControls: View {
                 Text("FSRCNNX GLSL · 8").tag("fsrcnnx8")
                 Text("FSRCNNX GLSL · 16").tag("fsrcnnx16")
             }
-            if model.sr.hasPrefix("fsrcnnx") {
+            if model.sr != "off" {
                 Toggle("Split-Screen SR Compare", isOn: $model.srCompare)
+                    .disabled(!model.supportsSRComparison)
+                Text("Compare bilinear source scaling with FSRCNNX Metal output. Both sides retain the current interpolation.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if model.srCompare {
                     HStack(spacing: 8) {
                         Text("Split").font(.caption).foregroundStyle(.secondary)
@@ -728,10 +923,16 @@ struct EnhancementControls: View {
                     Text("48").tag(48); Text("60").tag(60)
                 }.pickerStyle(.segmented)
             }
-            Text(model.srStatus).font(.caption).foregroundStyle(.secondary)
-            Text(model.fiStatus).font(.caption).foregroundStyle(.secondary)
+            LabeledContent("Super Resolution") {
+                Text(model.srStatus).multilineTextAlignment(.trailing).textSelection(.enabled)
+            }.font(.caption).foregroundStyle(.secondary)
+            LabeledContent("Interpolation") {
+                Text(model.fiStatus).multilineTextAlignment(.trailing).textSelection(.enabled)
+            }.font(.caption).foregroundStyle(.secondary)
             Toggle("Performance Fallback", isOn: $model.automatic)
-        }
+            Text("For a first try, choose RIFE Fast at 48 fps with Performance Fallback enabled. Unsupported sources are bypassed; check the status above.")
+                .font(.caption).foregroundStyle(.secondary)
+        }.disabled(model.systemHDRActive)
     }
 }
 struct QuickEnhancementSettings: View {
@@ -755,35 +956,38 @@ struct QuickEnhancementSettings: View {
         .scrollContentBackground(.hidden)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Color.black.opacity(0.14))
     }
 }
 
-/// Capture this player's window instead of whichever window happens to be key.
-struct PlayerWindowReader: NSViewRepresentable {
-    var model: PlayerModel
+/// The remaining AppKit bridge supplies the renderer's owning window and restores
+/// its normal frame. Appearance, toolbar visibility and window roles belong to SwiftUI.
+struct PlayerWindowBridge: NSViewRepresentable {
+    let model: PlayerModel
     final class Probe: NSView {
         weak var model: PlayerModel?
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
-            window.collectionBehavior.insert(.fullScreenPrimary)
-            window.styleMask.insert(.fullSizeContentView)
-            window.titlebarAppearsTransparent = true
-            window.titlebarSeparatorStyle = .none
-            window.titleVisibility = .hidden
-            window.backgroundColor = .black
-            // Publish after AppKit has finished attaching the SwiftUI hierarchy.
+            // Publish only after attachment. A probe can be detached/replaced before
+            // this runs; never let that delayed callback bind the old window again.
             DispatchQueue.main.async { [weak self, weak window] in
-                guard let model = self?.model, let window else { return }
+                guard let self, let window, self.window === window,
+                      let model = self.model, model.window !== window else { return }
+                if !window.styleMask.contains(.fullScreen) {
+                    // Retain existing saved positions and AppKit's screen-aware restore.
+                    window.setFrameUsingName("IIVE.MainWindow")
+                    window.setFrameAutosaveName("IIVE.MainWindow")
+                }
                 model.window = window
-                model.applyWindowAppearance()
-                let isFS = window.styleMask.contains(.fullScreen)
-                model.fullScreen = isFS
-                window.toolbar?.isVisible = !isFS
+                model.windowLifecycle.bind(to: window)
+                model.fullScreen = window.styleMask.contains(.fullScreen)
             }
         }
     }
     func makeNSView(context: Context) -> Probe { let probe = Probe(); probe.model = model; return probe }
-    func updateNSView(_ nsView: Probe, context: Context) {}
+    func updateNSView(_ nsView: Probe, context: Context) { nsView.model = model }
+    static func dismantleNSView(_ nsView: Probe, coordinator: ()) {
+        // Invalidate any queued attachment without interfering with window-close cleanup.
+        nsView.model = nil
+    }
 }

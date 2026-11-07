@@ -9,6 +9,8 @@ import RifeMetalCore
 /// Created via `RifeInterpolator.makeStream(width:height:)`. Not
 /// thread-safe — caller must serialize push/reset on a single instance.
 public final class RifeStream: @unchecked Sendable {
+    /// Serial caller only; cleared for rebase, reset, and failed pushes.
+    public private(set) var lastTiming: (gpuSpanMS: Double, cpuWaitMS: Double)?
     private var paddedInputBuffer: CVPixelBuffer?
     private var nv12OutputPool: CVPixelBufferPool?
 
@@ -67,6 +69,7 @@ public final class RifeStream: @unchecked Sendable {
     ///   while keeping the cache fresh.
     public func push(_ frame: CVPixelBuffer,
                      timesteps: [Float], outputNV12: Bool = false) throws -> [CVPixelBuffer] {
+        lastTiming = nil
         // Validate input dims and format.
         let frameW = CVPixelBufferGetWidth(frame)
         let frameH = CVPixelBufferGetHeight(frame)
@@ -141,6 +144,7 @@ public final class RifeStream: @unchecked Sendable {
             return outBuffers
             } catch {
                 // 失败时不能假定所有已提交的 GPU 工作都已结束。
+                lastTiming = nil
                 paddedInputBuffer = nil
                 throw error
             }
@@ -165,6 +169,7 @@ public final class RifeStream: @unchecked Sendable {
     /// `RifeError.dimensionMismatch` or `RifeError.unsupportedPixelFormat`.
     public func push(_ frame: CVPixelBuffer,
                      into output: CVPixelBuffer) throws -> Bool {
+        lastTiming = nil
         // Validate input dims and format.
         let frameW = CVPixelBufferGetWidth(frame)
         let frameH = CVPixelBufferGetHeight(frame)
@@ -222,6 +227,7 @@ public final class RifeStream: @unchecked Sendable {
             }
             return true
             } catch {
+                lastTiming = nil
                 paddedInputBuffer = nil
                 throw error
             }
@@ -230,9 +236,17 @@ public final class RifeStream: @unchecked Sendable {
 
     /// Drop cached previous-frame state. Next push goes through the
     /// first-frame path. Cache buffers are retained for reuse.
-    public func reset() {
-        hasCachedPrev = false
-        paddedInputBuffer = nil
+    public func reset(releasingUnusedResources: Bool = false) {
+        queue.sync {
+            lastTiming = nil
+            hasCachedPrev = false
+            paddedInputBuffer = nil
+            if releasingUnusedResources {
+                // Free only idle surfaces: downstream may still own output frames.
+                graph.releaseTransientCaches()
+                if let pool = nv12OutputPool { CVPixelBufferPoolFlush(pool, .excessBuffers) }
+            }
+        }
     }
 
     // push 在串行队列内等待 GPU 完成，下一帧才可以覆盖这份输入。
@@ -271,6 +285,7 @@ public final class RifeStream: @unchecked Sendable {
             prevImgFullBuf: imgFullBuf[prevSlot], currImgFullBuf: imgFullBuf[writeSlot],
             timesteps: timesteps,
             outputs:   outputs)
+        lastTiming = graph.lastStreamTiming
         prevSlot = writeSlot
     }
 

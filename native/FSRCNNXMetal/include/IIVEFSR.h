@@ -12,4 +12,11 @@ CVPixelBufferRef iive_fsr_process_chroma(void *handle, CVPixelBufferRef input, i
 // Same as iive_fsr_process_chroma, with optional splitRatio in [0, 1] rendering original luma on the left.
 CVPixelBufferRef iive_fsr_process_split(void *handle, CVPixelBufferRef input, int32_t left, float split_ratio);
 void iive_fsr_destroy(void *handle);
+// Serial worker, after inference: reclaim idle surfaces without recompiling.
+void iive_fsr_trim(void *handle);
+// Last successful inference: GPU start-to-end span across all submissions and
+// wall time blocked in the final CPU wait. They overlap; do not add them.
+// Serial caller, immediately after successful process/push. Returns 1 if valid,
+// otherwise 0 and writes -1. No additional synchronization. Units: milliseconds.
+int32_t iive_fsr_timing(void *handle,double *gpu_span_ms,double *cpu_wait_ms);
 #endif

@@ -134,8 +134,8 @@ public final class ConversionKernels {
             throw BackwardWarpError.shaderNotFound
         }
         self.accumulateFlowMask = try device.makeComputePipelineState(function: accumulate)
-        guard let nv12 = library.makeFunction(name: "rifeNV12ToRGB") else { throw BackwardWarpError.shaderNotFound }
-        guard let nv12Out = library.makeFunction(name: "rifeBlendToNV12") else {throw BackwardWarpError.shaderNotFound}
+        let nv12 = try Self.function("rifeNV12ToRGB", source: "NV12Input", library: library, device: device)
+        let nv12Out = try Self.function("rifeBlendToNV12", source: "NV12Output", library: library, device: device)
         self.blendToNV12 = try device.makeComputePipelineState(function: nv12Out)
         self.nv12ToRGB = try device.makeComputePipelineState(function: nv12)
         self.bgraToRGB = try device.makeComputePipelineState(function: f1)
@@ -154,4 +154,25 @@ public final class ConversionKernels {
         self.rgba4BufToRGBATex = try device.makeComputePipelineState(function: f10)
         self.rgbaTexTo4ChBuf = try device.makeComputePipelineState(function: f11)
     }
+
+    /// Older baseline metallibs omit the newer NV12 kernels. Use the same tracked
+    /// shader sources as offline builds, once per cached device context.
+    private static func function(_ name: String, source: String, library: MTLLibrary,
+                                 device: MTLDevice) throws -> MTLFunction {
+        if let function = library.makeFunction(name: name) { return function }
+        guard let url = Bundle.module.url(forResource: source, withExtension: "metal") else {
+            throw BackwardWarpError.pipelineCompilationFailed("Missing shader resource: \(source).metal (\(name))")
+        }
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            let fallback = try device.makeLibrary(source: text, options: nil)
+            guard let function = fallback.makeFunction(name: name) else {
+                throw BackwardWarpError.shaderNotFound
+            }
+            return function
+        } catch {
+            throw BackwardWarpError.pipelineCompilationFailed("\(name): \(error)")
+        }
+    }
+
 }

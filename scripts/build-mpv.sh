@@ -2,7 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/opt/homebrew/bin:$PATH"
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+if [[ -z "${DEVELOPER_DIR:-}" || ! -d "${DEVELOPER_DIR}" ]]; then
+  if [[ -d "/Applications/Xcode.app/Contents/Developer" ]]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+  elif [[ -d "/Library/Developer/CommandLineTools" ]]; then
+    export DEVELOPER_DIR="/Library/Developer/CommandLineTools"
+  fi
+fi
 export CLANG_MODULE_CACHE_PATH="$PWD/.cache/clang"
 # Dependencies: meson ninja pkgconf ffmpeg libass libplacebo lcms2 (Homebrew core).
 src="$PWD/.research/mpv-native"

@@ -30,8 +30,7 @@ public final class InferenceContext {
         self.device = device
         self.commandQueue = queue
         self.graph = MPSGraph()
-        self.warpKernel = try BackwardWarpKernel(device: device)
-        self.conversionKernels = try ConversionKernels(device: device)
+        (self.warpKernel,self.conversionKernels) = try InferenceKernelCache.shared.kernels(device:device)
         self.mpsGraphDevice = MPSGraphDevice(mtlDevice: device)
     }
 }
