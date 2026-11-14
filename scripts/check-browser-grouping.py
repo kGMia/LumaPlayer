@@ -4,6 +4,8 @@ import subprocess, os
 root = Path(__file__).resolve().parents[1]
 s = (root / 'PlayerSystem/PlayQueueView.swift').read_text()
 implementation = s[s.index('private struct BrowserStack:'):s.index('private struct BrowserMediaSection:')]
+models = (root / 'PlayerSystem/OnlineMovieMetadata.swift').read_text()
+implementation = models[models.index('struct OnlineMovie:'):models.index('struct MovieMetadataError:')] + '\n' + implementation
 fixture = (root / 'tests/BrowserGroupingSmoke.swift').read_text()
 out = root / 'build/checks/browser-grouping'
 out.mkdir(parents=True, exist_ok=True)

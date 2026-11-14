@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F041E3D5CA489D475ED534A1 /* OnlinePosterCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F041E3D5CA489D475ED534A2 /* OnlinePosterCache.swift */; };
+		F031E3D5CA489D475ED534A1 /* OnlineEpisodeBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = F031E3D5CA489D475ED534A2 /* OnlineEpisodeBatch.swift */; };
 		72D6C4D9769816C813961CDA /* OnlineMovieViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */; };
 		E3751CA7010D732FEA7062D6 /* OnlineMovieMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */; };
 		04AA5FA35C65BC2BAD888B3F /* native/Player/Modern/PlaybackChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050E46C77D2BFE277D05429E /* native/Player/Modern/PlaybackChrome.swift */; };
@@ -72,6 +74,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F041E3D5CA489D475ED534A2 /* OnlinePosterCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlinePosterCache.swift; sourceTree = "<group>"; };
+		F031E3D5CA489D475ED534A2 /* OnlineEpisodeBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineEpisodeBatch.swift; sourceTree = "<group>"; };
 		3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMovieViews.swift; sourceTree = "<group>"; };
 		0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMovieMetadata.swift; sourceTree = "<group>"; };
 		050E46C77D2BFE277D05429E /* native/Player/Modern/PlaybackChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = native/Player/Modern/PlaybackChrome.swift; sourceTree = SOURCE_ROOT; };
@@ -243,6 +247,8 @@
 				97D22F62309CA4D200C6A434 /* BrowserDirectoryWatcher.swift */,
 				976A32FB309E1A1000E39BBD /* SystemHDRPlayback.swift */,
 				3C9131823A53AF319845C3A2 /* OnlineMovieViews.swift */,
+				F041E3D5CA489D475ED534A2 /* OnlinePosterCache.swift */,
+				F031E3D5CA489D475ED534A2 /* OnlineEpisodeBatch.swift */,
 				0A516C1D5E458EEC2B8BE503 /* OnlineMovieMetadata.swift */,
 			);
 			path = PlayerSystem;
@@ -386,6 +392,8 @@
 				979FD9193080943C00E9DD3C /* LiveCaptions.swift in Sources */,
 				976A32FC309E1A1000E39BBD /* SystemHDRPlayback.swift in Sources */,
 				72D6C4D9769816C813961CDA /* OnlineMovieViews.swift in Sources */,
+				F041E3D5CA489D475ED534A1 /* OnlinePosterCache.swift in Sources */,
+				F031E3D5CA489D475ED534A1 /* OnlineEpisodeBatch.swift in Sources */,
 				E3751CA7010D732FEA7062D6 /* OnlineMovieMetadata.swift in Sources */,
 				B233F4F3C7FD9B5F08B538AB /* native/Player/Modern/IIVEPlayerApp.swift in Sources */,
 				97D22F63309CA4D200C6A434 /* BrowserDirectoryWatcher.swift in Sources */,

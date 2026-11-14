@@ -43,10 +43,21 @@ import Foundation
         }
         try? await Task.sleep(for: .milliseconds(20))
         await slots.release()
-        await visible.value; await background.value
+        await visible.value
+        await slots.release() // Background scans wait until remaining visible work drains.
+        await background.value
         let sequence = await order.values
         precondition(sequence == ["visible", "background"])
-        await slots.release()
+        let backgroundHeld = await slots.acquire(priority: .background)
+        precondition(backgroundHeld)
+        let backgroundTicket = UUID()
+        let queuedBackground = Task { await slots.acquire(priority: .background, ticket: backgroundTicket) }
+        try? await Task.sleep(for: .milliseconds(20))
+        // Promotion must use the reserved slot immediately, without a release.
+        await slots.promote(backgroundTicket, to: .detail)
+        let promoted: Bool? = await mediaReadWithDeadline(seconds: 1, cancel: { queuedBackground.cancel() }) { await queuedBackground.value }
+        precondition(promoted == true)
+        await slots.release(); await slots.release()
         let hold1 = await slots.acquire(), hold2 = await slots.acquire()
         precondition(hold1 && hold2)
         await slots.setConstrained(true)

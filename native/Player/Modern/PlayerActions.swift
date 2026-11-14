@@ -103,6 +103,7 @@ extension PlayerModel {
             return
         }
         removeQueueItem(item.id)
+        OnlineMovieLibrary.shared.remove(item.filename)
         playbackMemory.remove(item.filename)
         playbackMemory.remove(fileURL.path)
         var updatedRecent = recent

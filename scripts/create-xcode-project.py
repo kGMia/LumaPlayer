@@ -15,6 +15,8 @@ def obj(name, body): objects.append(f'{ident(name)} = {{ {body} }};'); return id
 sources = [
     'PlayerSystem/OnlineMovieMetadata.swift',
     'PlayerSystem/OnlineMovieViews.swift',
+    'PlayerSystem/OnlinePosterCache.swift',
+    'PlayerSystem/OnlineEpisodeBatch.swift',
     'PlayerSystem/PlayQueueActions.swift',
     'PlayerSystem/PlayQueueView.swift',
     'PlayerSystem/BrowserDirectoryWatcher.swift',

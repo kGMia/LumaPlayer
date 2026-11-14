@@ -248,6 +248,7 @@ private struct VideoHUDTechnicalCard: View {
 
 private struct VideoHUDMetadataSummaryCard: View {
     @ObservedObject private var onlineMovies = OnlineMovieLibrary.shared
+    @StateObject private var onlineArtwork = OnlineSummaryArtwork()
     @ObservedObject var model: PlayerModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -330,13 +331,19 @@ private struct VideoHUDMetadataSummaryCard: View {
     var body: some View {
         let info = displayMetadata
         let dark = colorScheme == .dark
+        let onlineImage = onlineArtwork.image(for: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        let awaitingOnline = onlineArtwork.awaitingImage(path: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        let coverImage = onlineImage ?? (awaitingOnline ? nil : self.coverImage)
+        let artworkTheme = onlineImage != nil ? onlineArtwork.theme(for: model.path, url: onlineMovies.movie(for: model.path)?.posterURL) : (awaitingOnline ? nil : self.artworkTheme)
         let chip = artworkTheme?.chip(dark: dark) ?? Color.primary
         let titleText = info.title.isEmpty ? model.title : info.title
         let collapsedDirectors = info.directors.joined(separator: " / ")
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 10) {
-                if let coverImage {
+                if awaitingOnline {
+                    ProgressView().frame(width: 60, height: 84)
+                } else if let coverImage {
                     let coverSize = resolvedCoverSize(for: coverImage, expanded: isExpanded)
                     Image(nsImage: coverImage)
                         .resizable()
@@ -401,6 +408,9 @@ private struct VideoHUDMetadataSummaryCard: View {
         .modifier(TintedLiquidGlass(cornerRadius: 22, theme: artworkTheme, tintOpacity: 0.28, scrimStrength: 0.65))
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: coverImage != nil)
         .animation(reduceMotion ? nil : .smooth(duration: 0.30), value: artworkTheme)
+        .task(id: "online-hud|\(model.path)|\(onlineMovies.movie(for: model.path)?.posterURL?.absoluteString ?? "")") {
+            await onlineArtwork.load(path: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        }
         .task(id: "hud-cover|\(model.path)|\(model.path.hasPrefix("/") ? false : model.remoteMetadataDeferred)") {
             await loadCoverAndTheme(for: model.path)
         }
@@ -699,6 +709,7 @@ private struct VideoHUDMetadataSummaryCard: View {
               !model.path.isEmpty,
               changedPath == model.path || URL(fileURLWithPath: changedPath).standardizedFileURL == URL(fileURLWithPath: model.path).standardizedFileURL else { return }
         let path = model.path
+        Task { await onlineArtwork.load(path: path, url: onlineMovies.movie(for: path)?.posterURL) }
         let updatedCover = QueueMetadataCache.cachedDedicatedArtwork(path).image ?? ThumbnailImageCache.shared.lookup(path)?.image
         let updatedTheme = updatedCover.flatMap { MediaArtworkTheme.resolve(for: path, image: $0) } ?? MediaArtworkTheme.cached(for: path)
         loadedCoverPath = path
@@ -1476,6 +1487,7 @@ struct MediaArtworkTheme: Equatable, Sendable {
 
 struct VideoInformationMetadataSections: View {
     @ObservedObject private var onlineMovies = OnlineMovieLibrary.shared
+    @StateObject private var onlineArtwork = OnlineSummaryArtwork()
     @ObservedObject var model: PlayerModel
     let telemetry: PlayerTelemetryState
     let active: Bool
@@ -1654,6 +1666,10 @@ struct VideoInformationMetadataSections: View {
             }
             }
         }
+        .task(id: "online-info|\(model.path)|\(active)|\(onlineMovies.movie(for: model.path)?.posterURL?.absoluteString ?? "")") {
+            guard active else { return }
+            await onlineArtwork.load(path: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        }
         .task(id: "cover|\(model.path)|\(active)|\(model.path.hasPrefix("/") ? false : model.remoteMetadataDeferred)") {
             guard active else { return }
             let path = model.path
@@ -1767,6 +1783,7 @@ struct VideoInformationMetadataSections: View {
                   !model.path.isEmpty,
                   changedPath == model.path || URL(fileURLWithPath: changedPath).standardizedFileURL == URL(fileURLWithPath: model.path).standardizedFileURL else { return }
             let path = model.path
+            Task { await onlineArtwork.load(path: path, url: onlineMovies.movie(for: path)?.posterURL) }
             let updatedCover = QueueMetadataCache.cachedDedicatedArtwork(path).image ?? ThumbnailImageCache.shared.lookup(path)?.image
             let updatedTheme = updatedCover.flatMap { MediaArtworkTheme.resolve(for: path, image: $0) } ?? MediaArtworkTheme.cached(for: path)
             loadedCoverPath = path
@@ -1815,13 +1832,17 @@ struct VideoInformationMetadataSections: View {
     private var metadataCard: some View {
         let info = displayMetadata
         let dark = informationColorScheme == .dark
+        let onlineImage = onlineArtwork.image(for: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        let awaitingOnline = onlineArtwork.awaitingImage(path: model.path, url: onlineMovies.movie(for: model.path)?.posterURL)
+        let informationCover = onlineImage ?? (awaitingOnline ? nil : self.informationCover)
+        let artworkTheme = onlineImage != nil ? onlineArtwork.theme(for: model.path, url: onlineMovies.movie(for: model.path)?.posterURL) : (awaitingOnline ? nil : self.artworkTheme)
         let chip = artworkTheme?.chip(dark: dark) ?? Color.primary
         return VStack(alignment: .leading, spacing: 10) {
-            if let informationCover {
+            if awaitingOnline {
+                ProgressView().frame(maxWidth: .infinity).frame(height: 180)
+            } else if let informationCover {
                 MediaDetailCover(image: informationCover, maximumHeight: 460, cornerRadius: 12)
                     .transition(.opacity)
-            } else if let url = onlineMovies.movie(for: model.path)?.posterURL {
-                OnlineMoviePoster(url: url).frame(maxWidth: .infinity, maxHeight: 460)
             }
             if !info.title.isEmpty {
                 Text(info.title).font(.title3.weight(.bold))

@@ -246,6 +246,56 @@ private struct QueueArtwork: View {
     }
 }
 
+/// All list artwork uses the same local-cover / online-poster / frame precedence as summaries.
+private struct ResolvedQueueArtwork: View {
+    let path: String
+    let itemID: Int64
+    let image: NSImage?
+    let current: Bool
+    let visible: Bool
+    var artworkSize: CGSize = CGSize(width: 76, height: 44)
+    var originalAspect = false
+    @ObservedObject private var library = OnlineMovieLibrary.shared
+    @StateObject private var online = OnlineSummaryArtwork()
+    var body: some View {
+        let url = library.movie(for: path)?.posterURL
+        let poster = online.image(for: path, url: url)
+        let waiting = online.awaitingImage(path: path, url: url)
+        let resolved = poster ?? (waiting ? nil : image)
+        let ratio = resolved.map { max(0.05, $0.size.width / max(1, $0.size.height)) } ?? 1
+        let size = originalAspect && poster != nil ? CGSize(width: min(120, 180 * ratio), height: min(180, 120 / ratio)) : artworkSize
+        QueueArtwork(itemID: itemID, image: resolved, current: current, visible: visible,
+                     artworkSize: size, originalAspect: originalAspect || poster != nil)
+            .task(id: "\(path)|\(visible)|\(library.searchRevision)") {
+                guard visible, path.hasPrefix("/") else { return }
+                do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+                await library.validate(path, prefetchPoster: false)
+                guard !Task.isCancelled else { return }
+                await online.load(path: path, url: library.movie(for: path)?.posterURL)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .mediaCoverDidChange)) { note in
+                guard let changed = note.object as? String, changed == path, visible else { return }
+                Task { await online.load(path: path, url: library.movie(for: path)?.posterURL) }
+            }
+    }
+}
+
+private struct OnlineSearchHint: View {
+    let path: String
+    let query: String
+    @ObservedObject private var library = OnlineMovieLibrary.shared
+    var body: some View {
+        Group {
+            if let hint = library.movie(for: path)?.searchHint(query) {
+                Text(hint).font(.caption2).foregroundStyle(.secondary).lineLimit(1).help(hint)
+            }
+        }.task(id: "\(path)|\(query.isEmpty)|\(library.searchRevision)") {
+            guard !query.isEmpty else { return }
+            await library.validate(path, prefetchPoster: false)
+        }
+    }
+}
+
 private struct QueueRowPresentation: Equatable {
     let detailed: Bool
     let paused: Bool
@@ -262,10 +312,11 @@ private struct QueueRow: View, @MainActor Equatable {
     let presentation: QueueRowPresentation
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model === rhs.model && lhs.item == rhs.item &&
-        lhs.metadataActive == rhs.metadataActive && lhs.presentation == rhs.presentation
+        lhs.metadataActive == rhs.metadataActive && lhs.presentation == rhs.presentation && lhs.searchQuery == rhs.searchQuery
     }
     let item: QueueItem
     let metadataActive: Bool
+    var searchQuery = ""
     var onRequestDelete: (QueueItem) -> Void
     @State private var metadata = QueueMetadata()
     @State private var coverImage: NSImage? = nil
@@ -278,7 +329,7 @@ private struct QueueRow: View, @MainActor Equatable {
             Button { model.playQueueItem(item.id) } label: {
                 HStack(spacing: 10) {
                     if presentation.detailed {
-                        QueueArtwork(itemID: item.id, image: coverImage, current: item.current,
+                        ResolvedQueueArtwork(path: item.filename, itemID: item.id, image: coverImage, current: item.current,
                                      visible: metadataActive && rowVisible)
                             .padding(.horizontal, 6).padding(.vertical, 4)
                             .transition(.opacity)
@@ -300,6 +351,7 @@ private struct QueueRow: View, @MainActor Equatable {
                                 Text(metadata.size.map(SharedByteCountFormatter.format) ?? "N/A")
                             }
                         }.font(.caption).foregroundStyle(.secondary)
+                        if !searchQuery.isEmpty { OnlineSearchHint(path: item.filename, query: searchQuery) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
             }.buttonStyle(QueuePressStyle()).help(item.title)
@@ -443,6 +495,10 @@ private struct QueueRow: View, @MainActor Equatable {
 struct QueueView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var onlineLibrary = OnlineMovieLibrary.shared
+    @State private var onlineSearchLoading = false
+    @State private var onlineSearchIndex: [String: String] = [:]
+    @State private var onlineSearchRevision: UInt64 = 0
     @ObservedObject var model: PlayerModel
     var metadataActive = true
     @State private var pendingDeleteItem: QueueItem? = nil
@@ -455,7 +511,7 @@ struct QueueView: View {
         let words = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         guard !words.isEmpty else { return model.queue }
         return model.queue.filter { item in
-            words.allSatisfy { item.title.localizedStandardContains($0) || item.filename.localizedStandardContains($0) }
+            words.allSatisfy { item.title.localizedStandardContains($0) || item.filename.localizedStandardContains($0) || (onlineLibrary.enabled && onlineSearchRevision == onlineLibrary.searchRevision && onlineSearchIndex[item.filename]?.localizedStandardContains($0) == true) }
         }
     }
 
@@ -600,6 +656,8 @@ struct QueueView: View {
             if model.queue.isEmpty {
                 ContentUnavailableView("No Media Queued", systemImage: "list.bullet", description: Text("Open video or audio files to build your queue."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filtered.isEmpty && onlineSearchLoading {
+                ProgressView("Searching local information…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if filtered.isEmpty {
                 ContentUnavailableView("No matching files", systemImage: "magnifyingglass")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -614,7 +672,7 @@ struct QueueView: View {
                             remote: model.remoteEntries[item.filename] != nil,
                             remoteDeferred: model.remoteEntries[item.filename] != nil && model.remoteMetadataDeferred,
                             remoteRevision: model.remoteEntries[item.filename] != nil ? model.metadataPriorityRevision : 0),
-                            item: item, metadataActive: metadataActive) { target in
+                            item: item, metadataActive: metadataActive, searchQuery: query) { target in
                             pendingDeleteItem = target
                         }
                         .equatable()
@@ -638,6 +696,16 @@ struct QueueView: View {
                 }
             }
         }
+                .task(id: "online-search|\(metadataActive)|\(query.isEmpty)|\(onlineLibrary.searchRevision)|\(model.queue.map(\.filename).joined(separator: "|"))") {
+                    guard metadataActive, !query.isEmpty, onlineLibrary.enabled else { onlineSearchIndex = [:]; onlineSearchLoading = false; return }
+                    onlineSearchLoading = true
+                    defer { if !Task.isCancelled { onlineSearchLoading = false } }
+                    do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+                    let index = await onlineLibrary.searchIndex(paths: model.queue.map(\.filename))
+                    guard !Task.isCancelled else { return }
+                    onlineSearchIndex = index
+                    onlineSearchRevision = onlineLibrary.searchRevision
+                }
         .frame(width: 360, height: preferredPopoverHeight, alignment: .top)
         .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: preferredPopoverHeight)
         .confirmationDialog(
@@ -1446,7 +1514,13 @@ private struct BrowserStack: Identifiable, Equatable, Sendable {
             if !entry.folder {
                 let stem = entry.url.deletingPathExtension().lastPathComponent
                 let ns = stem as NSString
-                for regex in regexes {
+                if let episode = MovieFilenameQuery.episode(entry.url.lastPathComponent) {
+                    let year = MovieFilenameQuery.parse(entry.url.lastPathComponent).year ?? ""
+                    let prefix = episode.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                    key = "series:" + entry.url.deletingLastPathComponent().absoluteString + "|" + prefix + "|" + year
+                    title = episode.title
+                }
+                for regex in regexes where key == entry.id {
                     guard let match = regex.firstMatch(in: stem, range: NSRange(location: 0, length: ns.length)) else { continue }
                     let prefix = ns.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces)
                     guard prefix.count >= 2 else { continue }
@@ -1651,6 +1725,19 @@ private struct BrowserStackRow<Rows: View>: View {
     @State private var images: [String: NSImage] = [:]
     @State private var durations: [String: Double] = [:]
     @State private var finished = false
+    @State private var contentStamps: [String: String] = [:]
+    private func contentStamp(_ entry: BrowserEntry) -> String {
+        "\(entry.size ?? -1)|\(entry.modified?.timeIntervalSince1970 ?? -1)"
+    }
+    private var stackContentIdentity: String {
+        stack.entries.map { $0.id + "|" + contentStamp($0) }.joined(separator: "|")
+    }
+    @ObservedObject private var onlineLibrary = OnlineMovieLibrary.shared
+    private var seriesSummary: OnlineSeriesSummary? {
+        OnlineSeriesSummary.resolve(stack.entries.prefix(128).compactMap {
+            $0.url.isFileURL ? onlineLibrary.movie(for: $0.url.path) : nil
+        })
+    }
 
     private var totalText: String {
         guard !durations.isEmpty else { return finished ? "N/A" : String(localized: "Reading duration…") }
@@ -1661,13 +1748,21 @@ private struct BrowserStackRow<Rows: View>: View {
     }
 
     var body: some View {
+        let series = seriesSummary
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 withAnimation(reduceMotion ? nil : .spring(duration: 0.42, bounce: 0.08)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 10) {
                     ZStack {
-                        if expanded {
+                        if !expanded, detailed, let poster = series?.posterURL {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 7).fill(.quaternary)
+                                    .frame(width: 32, height: 44).rotationEffect(.degrees(-8)).offset(x: -6, y: -2)
+                                OnlineMoviePoster(url: poster).frame(width: 34, height: 50)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }.frame(width: 84, height: 50)
+                        } else if expanded {
                             Image(systemName: "rectangle.stack").foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(stack.entries.prefix(3).enumerated().reversed()), id: \.element.id) { index, entry in
@@ -1692,7 +1787,7 @@ private struct BrowserStackRow<Rows: View>: View {
                     }
                     .frame(width: detailed ? 84 : 22, height: detailed ? 50 : 22)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(stack.title).fontWeight(.medium).lineLimit(1)
+                        Text(series?.title ?? stack.title).fontWeight(.medium).lineLimit(1).help(series?.title ?? stack.title)
                         HStack(spacing: 5) {
                             Text("\(stack.entries.count) items")
                                 .contentTransition(.numericText())
@@ -1700,6 +1795,10 @@ private struct BrowserStackRow<Rows: View>: View {
                             Text(totalText).monospacedDigit().lineLimit(1)
                                 .contentTransition(.numericText())
                         }.font(.caption).foregroundStyle(.secondary)
+                        if let series, !series.details.isEmpty {
+                            Text(series.details).font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1).help(series.details)
+                        }
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
@@ -1744,24 +1843,41 @@ private struct BrowserStackRow<Rows: View>: View {
             guard !Task.isCancelled else { return }
             rowsMounted = false
         }
+        .task(id: "online-stack|\(active && visible && !scrolling)|\(onlineLibrary.enabled)|\(stackContentIdentity)") {
+            guard active, visible, !scrolling, onlineLibrary.enabled else { return }
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            for entry in stack.entries.prefix(128) where entry.url.isFileURL {
+                guard !Task.isCancelled else { return }
+                await onlineLibrary.validate(entry.url.path, prefetchPoster: false)
+            }
+        }
         .onScrollVisibilityChange(threshold: 0.01) { visible = $0 }
         .onDisappear { visible = false }
-        .task(id: "\(active && visible && !scrolling)|\(remoteDeferred)|\(remoteRevision)|\(stack.entries.map(\.id).joined(separator: "|"))") {
+        .task(id: "\(active && visible && !scrolling)|\(expanded)|\(detailed)|\(series?.posterURL?.absoluteString ?? "")|\(remoteDeferred)|\(remoteRevision)|\(stackContentIdentity)") {
             guard active, visible, !scrolling else { return }
             do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
             finished = false
-            let ids = Set(stack.entries.map(\.id))
-            durations = durations.filter { ids.contains($0.key) }
-            images = images.filter { ids.contains($0.key) }
-            for entry in stack.entries.prefix(3) {
+            let nextStamps = Dictionary(uniqueKeysWithValues: stack.entries.map { ($0.id, contentStamp($0)) })
+            let unchanged = Set(nextStamps.keys.filter { contentStamps[$0] == nextStamps[$0] })
+            let changed = Set(nextStamps.keys.filter { contentStamps[$0] != nil && contentStamps[$0] != nextStamps[$0] })
+            durations = durations.filter { unchanged.contains($0.key) }
+            images = images.filter { unchanged.contains($0.key) }
+            contentStamps = nextStamps
+            for entry in stack.entries.prefix(3) where !changed.contains(entry.id) {
                 if let cached = ThumbnailImageCache.shared.lookup(entry.id) { images[entry.id] = cached.image }
             }
             var collectedDurations = durations
             var lastPublication = ContinuousClock.now
-            // Only three covers; remaining reads are lightweight duration probes, serial and cancellable.
+            // Reuse completed work after scroll cancellation. Expanded stacks let
+            // their child rows request artwork; an online series poster needs none.
             for (index, entry) in stack.entries.prefix(128).enumerated() {
                 guard !Task.isCancelled else { return }
-                let cover = index < 3
+                let cover = detailed && !expanded && series?.posterURL == nil && index < 3 && images[entry.id] == nil
+                if collectedDurations[entry.id] != nil && !cover { continue }
+                // Give visible artwork a head start before long stack duration scans.
+                if index == 3 {
+                    do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+                }
                 let metadata: QueueMetadata
                 if let item = entry.webDAVItem, let credentials {
                     let remote = RemoteQueueEntry(key: "browser-dav://" + item.id, item: item, origin: .webDAV(credentials))
@@ -2056,6 +2172,7 @@ private struct BrowserEntryRow: View, @MainActor Equatable {
     let remoteDeferred: Bool
     let remoteRevision: UInt64
     let browserRevision: Int
+    var searchQuery = ""
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model === rhs.model && lhs.entry == rhs.entry && lhs.detailed == rhs.detailed &&
         lhs.active == rhs.active && lhs.isCurrent == rhs.isCurrent &&
@@ -2063,7 +2180,7 @@ private struct BrowserEntryRow: View, @MainActor Equatable {
         lhs.showsRelativeFolder == rhs.showsRelativeFolder && lhs.isExpanded == rhs.isExpanded &&
         lhs.webDAVCredentials == rhs.webDAVCredentials && lhs.duration == rhs.duration &&
         lhs.remoteDeferred == rhs.remoteDeferred && lhs.remoteRevision == rhs.remoteRevision &&
-        lhs.browserRevision == rhs.browserRevision
+        lhs.browserRevision == rhs.browserRevision && lhs.searchQuery == rhs.searchQuery
     }
     let model: PlayerModel
     let entry: BrowserEntry
@@ -2164,11 +2281,12 @@ private struct BrowserEntryRow: View, @MainActor Equatable {
                             .padding(.horizontal, 4)
                             .padding(.vertical, 3)
                         } else {
-                            QueueArtwork(
+                            ResolvedQueueArtwork(
+                                path: entry.url.isFileURL ? entry.url.path : entry.id,
                                 itemID: Int64(bitPattern: UInt64(truncatingIfNeeded: entry.id.hashValue)),
                                 image: isExpanded ? (detailArtwork ?? coverImage) : coverImage,
                                 current: isCurrent,
-                                visible: active && rowVisible,
+                                visible: active && rowVisible && !scrolling,
                                 artworkSize: rowArtworkSize, originalAspect: isExpanded
                             )
                             .modifier(StackArtworkMatch(id: entry.id))
@@ -2200,6 +2318,7 @@ private struct BrowserEntryRow: View, @MainActor Equatable {
                                     .frame(width: 12, height: 12)
                             }
                         }
+                        if !searchQuery.isEmpty { OnlineSearchHint(path: entry.url.isFileURL ? entry.url.path : entry.id, query: searchQuery) }
                         if detailed {
                             HStack(spacing: 4) {
                                 if entry.folder {
@@ -2576,6 +2695,7 @@ private struct BrowserEntryRow: View, @MainActor Equatable {
 
 /// Sidebar file browser supporting both Local Folders and WebDAV servers, with Compact List, Thumbnail view modes, and recursive NFO Tag Capsule filtering.
 struct LocalMediaBrowser: View {
+    @ObservedObject private var onlineLibrary = OnlineMovieLibrary.shared
     let model: PlayerModel
     @StateObject private var observation = SidebarModelObservation()
     var active: Bool
@@ -2592,6 +2712,11 @@ struct LocalMediaBrowser: View {
     @State private var availableTags: [BrowserTagSummary] = []
     @State private var entryTagsByID: [String: Set<String>] = [:]
     @State private var entrySearchIndexByID: [String: String] = [:]
+    @State private var onlineSearchLoading = false
+    @State private var onlineSearchIndex: [String: String] = [:]
+    @State private var onlineSearchRevision: UInt64 = 0
+    @State private var onlinePoolRevision = 0
+    @State private var indexedPoolRevision = -1
     @State private var selectedTags: Set<String> = []
     @State private var expandedEntryID: String? = nil
     @State private var query = ""
@@ -2642,7 +2767,19 @@ struct LocalMediaBrowser: View {
         let secondLevel = secondLevelMediaEntries
         let subtree = subtreeMediaEntries
         let tags = entryTagsByID
-        let searchIndex = entrySearchIndexByID
+        var searchIndex = entrySearchIndexByID
+        if !settledQuery.isEmpty, onlineLibrary.enabled,
+           onlineSearchRevision == onlineLibrary.searchRevision, indexedPoolRevision == onlinePoolRevision {
+            let pool = entries + secondLevel + subtree
+            let online = onlineSearchIndex
+            var indexedIDs: Set<String> = []
+            for entry in pool {
+                guard indexedIDs.insert(entry.id).inserted, let text = online[entry.url.path] else { continue }
+                let local = searchIndex[entry.id] ?? MediaNFOCache.shared.lookup(entry.id).value?.searchableText ?? ""
+                searchIndex[entry.id] = local + "\n" + text
+            }
+        }
+        let combinedSearchIndex = searchIndex
         let activeMeta = activeMediaMetadataText
         let selection = selectedTags
         let query = settledQuery
@@ -2658,7 +2795,7 @@ struct LocalMediaBrowser: View {
                     secondLevelEntries: secondLevel,
                     subtree: subtree,
                     tags: tags,
-                    searchIndex: searchIndex,
+                    searchIndex: combinedSearchIndex,
                     activeMetadata: activeMeta,
                     selection: selection,
                     query: query,
@@ -2671,7 +2808,7 @@ struct LocalMediaBrowser: View {
                     entries,
                     subtree: subtree,
                     tags: tags,
-                    searchIndex: searchIndex,
+                    searchIndex: combinedSearchIndex,
                     activeMetadata: activeMeta,
                     selection: selection,
                     query: query,
@@ -2716,6 +2853,16 @@ struct LocalMediaBrowser: View {
                     if trash { try FileManager.default.trashItem(at: url, resultingItemURL: nil) }
                     else { try FileManager.default.moveItem(at: url, to: url.deletingLastPathComponent().appendingPathComponent(name)) }
                 }.value
+                let affected = (entries + secondLevelMediaEntries + subtreeMediaEntries).filter {
+                    $0.url.path == url.path || $0.url.path.hasPrefix(url.path + "/")
+                }
+                for oldPath in Set(affected.filter { !$0.folder }.map { $0.url.path } + [url.path]) {
+                    if trash { onlineLibrary.remove(oldPath) }
+                    else {
+                        let destination = url.deletingLastPathComponent().appendingPathComponent(name).path + String(oldPath.dropFirst(url.path.count))
+                        await onlineLibrary.relocate(from: oldPath, to: destination)
+                    }
+                }
                 MediaNFOCache.shared.invalidateLocalPath(url.path)
                 MediaNFOCache.shared.invalidateLocalPath(url.deletingLastPathComponent().appendingPathComponent(name).path)
                 for entry in entries + secondLevelMediaEntries + subtreeMediaEntries
@@ -3270,10 +3417,28 @@ struct LocalMediaBrowser: View {
             reloadToken = UUID()
         }
         .task(id: "\(browserRevision)|\(active)") { await updateDisplayedEntries() }
-        .onChange(of: entries, initial: true) { _, _ in refreshDisplayedEntries() }
-        .onChange(of: secondLevelMediaEntries) { _, _ in refreshDisplayedEntries() }
-        .onChange(of: subtreeMediaEntries) { _, _ in refreshDisplayedEntries() }
+        .task(id: "online-index|\(active)|\(settledQuery.isEmpty)|\(onlinePoolRevision)|\(onlineLibrary.searchRevision)") {
+            guard active, !settledQuery.isEmpty, onlineLibrary.enabled else {
+                onlineSearchIndex = [:]; onlineSearchLoading = false; refreshDisplayedEntries(); return
+            }
+            onlineSearchLoading = true
+            defer { if !Task.isCancelled { onlineSearchLoading = false } }
+            do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+            let poolRevision = onlinePoolRevision
+            let paths = (entries + secondLevelMediaEntries + subtreeMediaEntries)
+                .filter { !$0.folder && $0.url.isFileURL }.map { $0.url.path }
+            let index = await onlineLibrary.searchIndex(paths: paths)
+            guard !Task.isCancelled, poolRevision == onlinePoolRevision else { return }
+            onlineSearchIndex = index
+            onlineSearchRevision = onlineLibrary.searchRevision
+            indexedPoolRevision = poolRevision
+            refreshDisplayedEntries()
+        }
+        .onChange(of: entries, initial: true) { _, _ in onlinePoolRevision &+= 1; refreshDisplayedEntries() }
+        .onChange(of: secondLevelMediaEntries) { _, _ in onlinePoolRevision &+= 1; refreshDisplayedEntries() }
+        .onChange(of: subtreeMediaEntries) { _, _ in onlinePoolRevision &+= 1; refreshDisplayedEntries() }
         .onChange(of: entryTagsByID) { _, _ in refreshDisplayedEntries() }
+        .onChange(of: onlineLibrary.searchRevision) { _, _ in refreshDisplayedEntries() }
         .onChange(of: entrySearchIndexByID) { _, _ in refreshDisplayedEntries() }
         .onChange(of: selectedTags) { _, _ in refreshDisplayedEntries() }
         .onReceive(NotificationCenter.default.publisher(for: .browserSearchCurrentFolder)) { note in
@@ -3464,6 +3629,7 @@ struct LocalMediaBrowser: View {
             remoteDeferred: entry.webDAVItem != nil && model.remoteMetadataDeferred,
             remoteRevision: entry.webDAVItem != nil ? model.metadataPriorityRevision : 0,
             browserRevision: browserRevision,
+            searchQuery: settledQuery,
             model: model,
             entry: entry,
             detailed: detailedView,

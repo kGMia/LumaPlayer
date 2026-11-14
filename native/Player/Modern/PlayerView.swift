@@ -156,11 +156,32 @@ struct PlayerView: View {
     }
 
     private var shouldShowToolbar: Bool {
-        if model.windowTransition || model.miniPlayer { return false }
-        if model.fullScreen {
-            return fullScreenTopBarVisible
-        }
+        if model.miniPlayer { return false }
+        // Keep native toolbar items installed throughout fullscreen. The system's
+        // onHover policy reveals the titlebar; hiding the toolbar itself disables it.
+        if model.fullScreen { return true }
+        if model.windowTransition { return false }
         return !model.hasActiveMediaSession || controlsVisible || showOverlaySidebar
+    }
+
+    @ViewBuilder private var leadingToolbarButtons: some View {
+        Button { model.openPanel() } label: { Label("Open", systemImage: "folder") }.help("Open media (⌘O)")
+        Menu {
+            if model.recent.isEmpty { Text("No recent videos") }
+            ForEach(model.recent, id: \.self) { path in
+                Button(URL(fileURLWithPath: path).lastPathComponent) { model.open(URL(fileURLWithPath: path)) }
+            }
+        } label: { Label("Recent", systemImage: "clock") }.help("Open recent media")
+    }
+    @ViewBuilder private var trailingToolbarButtons: some View {
+        Button { model.master.toggle() } label: {
+            Label("Enhancement", systemImage: model.master ? "sparkles" : "sparkle")
+        }.help("Toggle all enhancements (⇧⌘E)")
+            .accessibilityValue(model.master ? Text("On") : Text("Off"))
+        SettingsLink { Label("Settings", systemImage: "gearshape") }.help("Settings (⌘,)")
+        Button { if model.inspector { model.inspector = false } else { model.showSidebar("enhance") } } label: {
+            Label("Inspector", systemImage: "sidebar.right")
+        }.help("Sidebar (⌥⌘I)")
     }
 
     var body: some View {
@@ -302,11 +323,9 @@ struct PlayerView: View {
                         NSCursor.setHiddenUntilMouseMoves(false)
                         if !fullScreenTopBarVisible {
                             fullScreenTopBarVisible = true
-                            model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: true)
                         }
                     } else if fullScreenTopBarVisible && location.y > 92 && !model.isMenuTracking && !activity.isCursorNearTopEdge(of: model.window, threshold: 92) && Date().timeIntervalSince(activity.lastTopHover) > 0.35 {
                         fullScreenTopBarVisible = false
-                        model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: false)
                     }
                 }
                 let height = max(model.videoView?.bounds.height ?? model.mainVideoHost?.bounds.height ?? 600, 1)
@@ -319,13 +338,11 @@ struct PlayerView: View {
                     NSCursor.setHiddenUntilMouseMoves(false)
                     if !fullScreenTopBarVisible {
                         fullScreenTopBarVisible = true
-                        model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: true)
                     }
                 } else {
                     activity.resetHover()
                     if fullScreenTopBarVisible && !model.isMenuTracking && Date().timeIntervalSince(activity.lastTopHover) > 0.35 {
                         fullScreenTopBarVisible = false
-                        model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: model.fullScreen, topBarVisible: false)
                     }
                 }
             }
@@ -339,13 +356,9 @@ struct PlayerView: View {
                     if !fullScreenTopBarVisible {
                         NSCursor.setHiddenUntilMouseMoves(false)
                         fullScreenTopBarVisible = true
-                        model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: true)
                     }
                 } else if fullScreenTopBarVisible && !model.isMenuTracking && now.timeIntervalSince(activity.lastTopHover) > 0.4 {
                     fullScreenTopBarVisible = false
-                    model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: false)
-                } else {
-                    model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: true, topBarVisible: fullScreenTopBarVisible, animated: false)
                 }
             }
             if controlsVisible && !model.isMenuTracking && model.autoHideControls && model.transportTitle.isEmpty && model.resumedFrom == nil && model.loaded && !model.playbackActivity.isBusy && !model.paused && model.timeline.pendingSeek == nil && !scrubbing && !model.quickSettings && !model.queuePopover && !hoveringControls && now.timeIntervalSince(activity.last) > model.controlsHideDelay {
@@ -364,39 +377,15 @@ struct PlayerView: View {
         .onChange(of: model.quickSettings) { revealControls() }
         .onChange(of: model.queuePopover) { revealControls() }
         .onChange(of: model.fullScreen) {
-            let nearTop = model.fullScreen && activity.isCursorNearTopEdge(of: model.window, threshold: 62)
-            fullScreenTopBarVisible = nearTop
-            model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: model.fullScreen, topBarVisible: nearTop, animated: false)
-            DispatchQueue.main.async {
-                model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: model.fullScreen, topBarVisible: fullScreenTopBarVisible, animated: false)
-            }
+            fullScreenTopBarVisible = model.fullScreen && activity.isCursorNearTopEdge(of: model.window, threshold: 62)
             revealControls()
-        }
-        .onChange(of: shouldShowToolbar) {
-            DispatchQueue.main.async {
-                model.windowLifecycle.syncTitlebarContainerVisibility(fullScreen: model.fullScreen, topBarVisible: fullScreenTopBarVisible)
-            }
         }
         .onExitCommand { if model.queuePopover || model.quickSettings { model.queuePopover = false; model.quickSettings = false } else if model.miniPlayer { model.toggleMiniPlayer() } else if model.fullScreen { model.toggleFullScreen() } }
         .navigationTitle(model.title)
         .toolbar {
-            if shouldShowToolbar {
-                ToolbarItemGroup(placement: .automatic) {
-                    Button { model.openPanel() } label: { Label("Open", systemImage: "folder") }.help("Open media (⌘O)")
-                    Menu {
-                        if model.recent.isEmpty { Text("No recent videos") }
-                        ForEach(model.recent, id: \.self) { path in
-                            Button(URL(fileURLWithPath: path).lastPathComponent) { model.open(URL(fileURLWithPath: path)) }
-                        }
-                    } label: { Label("Recent", systemImage: "clock") }.help("Open recent media")
-                }
-                ToolbarSpacer(.flexible, placement: .automatic)
-                ToolbarItemGroup(placement: .automatic) {
-                    Toggle(isOn: $model.master) { Label("Enhancement", systemImage: "sparkles") }.help("Toggle all enhancements (⇧⌘E)")
-                    SettingsLink { Label("Settings", systemImage: "gearshape") }.help("Settings (⌘,)")
-                    Button { if model.inspector { model.inspector = false } else { model.showSidebar("enhance") } } label: { Label("Inspector", systemImage: "sidebar.right") }.help("Sidebar (⌥⌘I)")
-                }
-            }
+            ToolbarItemGroup(placement: .automatic) { leadingToolbarButtons }
+            ToolbarSpacer(.flexible, placement: .automatic)
+            ToolbarItemGroup(placement: .automatic) { trailingToolbarButtons }
         }
         // SwiftUI owns window/toolbar presentation; AppKit only tracks lifecycle
         // and synchronizes renderer transitions.
@@ -404,7 +393,8 @@ struct PlayerView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbarColorScheme(model.effectiveChromeColorScheme, for: .windowToolbar)
         .preferredColorScheme(model.effectiveChromeColorScheme)
-        .toolbarVisibility(shouldShowToolbar ? .automatic : .hidden, for: .windowToolbar)
+        .toolbarVisibility(shouldShowToolbar ? .visible : .hidden, for: .windowToolbar)
+        .windowToolbarFullScreenVisibility(.onHover)
         .onInteractiveResizeChange { isResizing in
             if model.liveResizing != isResizing {
                 model.liveResizing = isResizing

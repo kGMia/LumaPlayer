@@ -58,7 +58,9 @@ actor QueueReadSlots {
     private var waiting: [(UUID, CheckedContinuation<Bool, Never>, MediaReadPriority)] = []
     func acquire(priority: MediaReadPriority = .visible, ticket: UUID = UUID()) async -> Bool {
         guard !Task.isCancelled else { return false }
-        if active < limit { active += 1; return true }
+        // Background scans run only while the pool is otherwise idle. They cannot
+        // occupy both slots before visible thumbnails arrive.
+        if active < limit && (priority != .background || active == 0) { active += 1; return true }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 if Task.isCancelled { continuation.resume(returning: false) }
@@ -74,6 +76,7 @@ actor QueueReadSlots {
         guard let index = waiting.firstIndex(where: { $0.0 == ticket }),
               waiting[index].2.rawValue < priority.rawValue else { return }
         waiting[index].2 = priority
+        drain()
     }
     func setConstrained(_ constrained: Bool) {
         limit = constrained ? 1 : 2
@@ -88,6 +91,7 @@ actor QueueReadSlots {
         while active < limit,
               let highest = waiting.map({ $0.2.rawValue }).max(),
               let index = waiting.firstIndex(where: { $0.2.rawValue == highest }) {
+            guard highest > MediaReadPriority.background.rawValue || active == 0 else { break }
             active += 1
             waiting.remove(at: index).1.resume(returning: true)
         }
